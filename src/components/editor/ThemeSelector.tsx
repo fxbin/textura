@@ -18,12 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import DOMPurify from 'dompurify';
 
 export function ThemeSelector() {
-  const { 
-    theme, setTheme, 
+  const {
+    theme, setTheme,
     customThemeCss, setCustomThemeCss,
-    savedThemes, addSavedTheme, updateSavedTheme, deleteSavedTheme 
+    savedThemes, addSavedTheme, updateSavedTheme, deleteSavedTheme
   } = useEditorStore();
 
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
@@ -39,6 +40,19 @@ export function ThemeSelector() {
       setIsEditorVisible(true);
     }
   }, [theme, isCustomOrSaved]);
+
+  // CSS Sanitization to prevent XSS breakout from <style> tags
+  // We sanitize the raw input by removing any script tags or closing style tags 
+  // that could allow breaking out of the context.
+  const handleCssChange = (css: string) => {
+    // Basic anti-XSS for <style> blocks
+    const sanitizedCss = css
+      .replace(/<\/style>/gi, '')   // Prevent breaking out of the style block
+      .replace(/<script[^>]*>.*<\/script>/gi, '') // Remove inline scripts
+      .replace(/javascript:/gi, ''); // Remove JS protocols
+
+    setCustomThemeCss(sanitizedCss);
+  };
 
   const handleCloseEditor = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -62,7 +76,7 @@ export function ThemeSelector() {
 
   const handleConfirmSave = () => {
     if (!themeName.trim()) return;
-    
+
     if (currentSavedTheme) {
       updateSavedTheme(currentSavedTheme.id, themeName, customThemeCss);
     } else {
@@ -88,7 +102,7 @@ export function ThemeSelector() {
 
   const parseCssToStyles = (css: string): Record<string, string> => {
     const styles: Record<string, string> = {};
-    
+
     // Helper to extract property from a CSS block for a given selector
     // This is a heuristic parser
     const extract = (selectorPart: string, prop: string) => {
@@ -96,14 +110,14 @@ export function ThemeSelector() {
       // This is hard with regex. Let's just look for "selector { ... prop: value ... }"
       // Simplified: look for `selector` followed by `{` then `prop`
       try {
-         const blockRegex = new RegExp(`${selectorPart}[^{]*\\{([^}]*)\\}`, 'g');
-         let match;
-         while ((match = blockRegex.exec(css)) !== null) {
-            const content = match[1];
-            const propRegex = new RegExp(`${prop}\\s*:\\s*([^;!]+)`, 'i');
-            const propMatch = content.match(propRegex);
-            if (propMatch) return propMatch[1].trim();
-         }
+        const blockRegex = new RegExp(`${selectorPart}[^{]*\\{([^}]*)\\}`, 'g');
+        let match;
+        while ((match = blockRegex.exec(css)) !== null) {
+          const content = match[1];
+          const propRegex = new RegExp(`${prop}\\s*:\\s*([^;!]+)`, 'i');
+          const propMatch = content.match(propRegex);
+          if (propMatch) return propMatch[1].trim();
+        }
       } catch (e) { return null; }
       return null;
     };
@@ -116,7 +130,7 @@ export function ThemeSelector() {
 
     const pColor = extract('p', 'color');
     if (pColor) styles.p = `color: ${pColor}`;
-    
+
     const accentColor = extract('a', 'color') || extract('blockquote', 'color');
     if (accentColor) styles.a = `color: ${accentColor}`;
 
@@ -132,17 +146,17 @@ export function ThemeSelector() {
 
     // Check if it's a dark theme based on background brightness
     // Simple heuristic: if bg is dark, use light borders for contrast
-    const isDark = bg.match(/#([0-9a-f]{3}){1,2}/i) ? 
+    const isDark = bg.match(/#([0-9a-f]{3}){1,2}/i) ?
       (parseInt(bg.replace('#', ''), 16) > 0xffffff / 2 ? false : true) : false;
 
     return (
       <div className="w-full h-full flex flex-col p-3 gap-2" style={{ backgroundColor: bg }}>
         {/* Title Line (H1) */}
         <div className="w-3/4 h-2.5 rounded-sm" style={{ backgroundColor: h1Color, opacity: 0.9 }} />
-        
+
         {/* Secondary Line (H2) */}
         <div className="w-1/2 h-2 rounded-sm" style={{ backgroundColor: h1Color, opacity: 0.7 }} />
-        
+
         {/* Body Lines (P) */}
         <div className="flex flex-col gap-1.5 mt-1">
           <div className="w-full h-1.5 rounded-sm" style={{ backgroundColor: textColor, opacity: 0.6 }} />
@@ -160,7 +174,7 @@ export function ThemeSelector() {
     <div className="h-full w-full bg-background/95 backdrop-blur-sm flex flex-col border-l border-border/50 overflow-hidden">
       <div className="flex-none p-4 border-b bg-muted/30 shrink-0">
         <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-          <span className="w-1 h-4 bg-primary rounded-full"/>
+          <span className="w-1 h-4 bg-primary rounded-full" />
           选择模板
         </h2>
       </div>
@@ -181,8 +195,8 @@ export function ThemeSelector() {
                       }}
                       className={cn(
                         "w-full aspect-[4/3] rounded-lg border-2 transition-all overflow-hidden relative shadow-sm hover:shadow-md",
-                        theme === t.id 
-                          ? "border-primary ring-2 ring-primary/20 ring-offset-1" 
+                        theme === t.id
+                          ? "border-primary ring-2 ring-primary/20 ring-offset-1"
                           : "border-transparent hover:border-border/80"
                       )}
                     >
@@ -214,80 +228,80 @@ export function ThemeSelector() {
               </div>
             </div>
           )}
-          
+
           {/* Create New Custom Theme Button */}
           <div className="space-y-3">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">自定义</h3>
             <button
-               onClick={() => setTheme('custom')}
-               className={cn(
-                 "w-full p-3 rounded-lg border-2 border-dashed transition-all duration-200 group relative flex items-center justify-center gap-2 hover:bg-muted/50",
-                 theme === 'custom'
-                   ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20" 
-                   : "border-border hover:border-primary/50"
-               )}
-             >
-               <span className={cn(
-                 "font-medium text-sm",
-                 theme === 'custom' ? "text-primary" : "text-muted-foreground group-hover:text-primary"
-               )}>
-                 + 新建自定义样式
-               </span>
+              onClick={() => setTheme('custom')}
+              className={cn(
+                "w-full p-3 rounded-lg border-2 border-dashed transition-all duration-200 group relative flex items-center justify-center gap-2 hover:bg-muted/50",
+                theme === 'custom'
+                  ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20"
+                  : "border-border hover:border-primary/50"
+              )}
+            >
+              <span className={cn(
+                "font-medium text-sm",
+                theme === 'custom' ? "text-primary" : "text-muted-foreground group-hover:text-primary"
+              )}>
+                + 新建自定义样式
+              </span>
             </button>
           </div>
 
           {/* Editor Area */}
           {isCustomOrSaved && isEditorVisible && (
-             <div className="p-4 border rounded-lg bg-muted/20 space-y-3 animate-in fade-in zoom-in-95 duration-200">
-               <div className="flex items-center justify-between">
-                 <Label htmlFor="custom-css" className="text-xs font-medium text-muted-foreground">
-                   CSS 编辑器
-                 </Label>
-                 <div className="flex gap-2">
-                    {currentSavedTheme && (
-                       <Button 
-                         variant="ghost" 
-                         size="sm" 
-                         className="h-6 px-2 text-destructive hover:text-destructive"
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           handleDelete(currentSavedTheme.id);
-                         }}
-                       >
-                         <Trash2 className="w-3 h-3 mr-1" /> 删除
-                       </Button>
-                    )}
-                    <Button 
-                      variant="ghost" 
+            <div className="p-4 border rounded-lg bg-muted/20 space-y-3 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="custom-css" className="text-xs font-medium text-muted-foreground">
+                  CSS 编辑器
+                </Label>
+                <div className="flex gap-2">
+                  {currentSavedTheme && (
+                    <Button
+                      variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 hover:bg-muted-foreground/10"
-                      onClick={handleCloseEditor}
-                      title={theme === 'custom' ? "取消编辑" : "收起编辑器"}
+                      className="h-6 px-2 text-destructive hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(currentSavedTheme.id);
+                      }}
                     >
-                      <X className="w-4 h-4" />
+                      <Trash2 className="w-3 h-3 mr-1" /> 删除
                     </Button>
-                 </div>
-               </div>
-               
-               <Textarea
-                 id="custom-css"
-                 value={customThemeCss}
-                 onChange={(e) => setCustomThemeCss(e.target.value)}
-                 placeholder=".prose h1 { color: red; }"
-                 className="font-mono text-xs min-h-[200px] resize-y bg-background"
-               />
-               
-               <div className="flex justify-between items-center">
-                  <p className="text-[10px] text-muted-foreground">
-                   .prose 为根选择器
-                  </p>
-                  <Button size="sm" onClick={handleSaveClick}>
-                    <Save className="w-4 h-4 mr-1" />
-                    {currentSavedTheme ? '保存修改' : '保存模板'}
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 hover:bg-muted-foreground/10"
+                    onClick={handleCloseEditor}
+                    title={theme === 'custom' ? "取消编辑" : "收起编辑器"}
+                  >
+                    <X className="w-4 h-4" />
                   </Button>
-               </div>
-             </div>
-           )}
+                </div>
+              </div>
+
+              <Textarea
+                id="custom-css"
+                value={customThemeCss}
+                onChange={(e) => handleCssChange(e.target.value)}
+                placeholder=".prose h1 { color: red; }"
+                className="font-mono text-xs min-h-[200px] resize-y bg-background"
+              />
+
+              <div className="flex justify-between items-center">
+                <p className="text-[10px] text-muted-foreground">
+                  .prose 为根选择器
+                </p>
+                <Button size="sm" onClick={handleSaveClick}>
+                  <Save className="w-4 h-4 mr-1" />
+                  {currentSavedTheme ? '保存修改' : '保存模板'}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {THEME_GROUPS.map((group) => (
             <div key={group.label} className="space-y-3">
@@ -299,13 +313,13 @@ export function ThemeSelector() {
                       onClick={() => setTheme(t.id)}
                       className={cn(
                         "w-full aspect-[4/3] rounded-xl border transition-all overflow-hidden relative shadow-sm hover:shadow-md group-hover:-translate-y-0.5 duration-300",
-                        theme === t.id 
-                          ? "border-primary ring-2 ring-primary/20 ring-offset-2" 
+                        theme === t.id
+                          ? "border-primary ring-2 ring-primary/20 ring-offset-2"
                           : "border-border/40 hover:border-border"
                       )}
                     >
                       {renderThemeSwatch(t.styles)}
-                      
+
                       {theme === t.id && (
                         <div className="absolute inset-0 bg-black/5 dark:bg-white/10 flex items-center justify-center backdrop-blur-[1px]">
                           <div className="bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg scale-100 animate-in zoom-in duration-200">

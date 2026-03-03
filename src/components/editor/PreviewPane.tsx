@@ -29,7 +29,7 @@ import { Mermaid } from './Mermaid';
 
 export function PreviewPane() {
   const { 
-    markdown, 
+    markdown: storeMarkdown, 
     theme, 
     fontSize, 
     deviceModel, 
@@ -42,6 +42,9 @@ export function PreviewPane() {
   } = useEditorStore();
   const [mounted, setMounted] = React.useState(false);
   const [htmlContent, setHtmlContent] = React.useState('');
+  
+  // 性能优化：使用 useDeferredValue 解耦高频输入导致的大开销重新渲染
+  const markdown = React.useDeferredValue(storeMarkdown);
 
   React.useEffect(() => {
     setMounted(true);
