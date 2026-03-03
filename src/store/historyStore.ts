@@ -11,7 +11,7 @@ export interface DocumentSnapshot {
 interface HistoryState {
   snapshots: DocumentSnapshot[];
   maxSnapshots: number;
-  
+
   addSnapshot: (content: string, label?: string) => void;
   removeSnapshot: (id: string) => void;
   clearSnapshots: () => void;
@@ -22,7 +22,7 @@ export const useHistoryStore = create<HistoryState>()(
   persist(
     (set, get) => ({
       snapshots: [],
-      maxSnapshots: 20,
+      maxSnapshots: 50,
 
       addSnapshot: (content: string, label?: string) => set((state) => {
         const newSnapshot: DocumentSnapshot = {
@@ -33,7 +33,7 @@ export const useHistoryStore = create<HistoryState>()(
         };
 
         const updatedSnapshots = [newSnapshot, ...state.snapshots];
-        
+
         if (updatedSnapshots.length > state.maxSnapshots) {
           updatedSnapshots.pop();
         }

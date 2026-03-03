@@ -10,9 +10,13 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
 import { useEditorStore } from '@/store/useEditorStore';
+import { useAutoSave } from '@/hooks/useAutoSave';
 
 export default function Home() {
   const { isSidebarOpen } = useEditorStore();
+
+  // Use a shorter interval (e.g., 3 minutes) or the default 5 minutes
+  useAutoSave(180000); // 3 minutes for peace of mind
 
   return (
     <main className="h-screen w-screen flex flex-col overflow-hidden bg-background relative">
@@ -27,7 +31,7 @@ export default function Home() {
           <ResizablePanel defaultSize={40} minSize={30} className="h-full">
             <PreviewPane />
           </ResizablePanel>
-          
+
           {isSidebarOpen && (
             <>
               <ResizableHandle withHandle />
