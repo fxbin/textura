@@ -4,29 +4,38 @@ import * as React from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { 
-  Wand2, 
-  Bot, 
-  Bold, 
-  Italic, 
-  Link as LinkIcon, 
-  Image as ImageIcon, 
-  Code, 
-  Quote, 
-  List, 
+import {
+  Wand2,
+  Bot,
+  Bold,
+  Italic,
+  Link as LinkIcon,
+  Image as ImageIcon,
+  Code,
+  Quote,
+  List,
   ListOrdered,
   Link2,
   Workflow,
   Undo2,
-  Redo2
+  Redo2,
+  Link,
+  Unlink
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { autoFormatMarkdown, formatWeChatLinks } from '@/lib/formatter';
 import { handleSmartPaste } from '@/lib/htmlToMarkdown';
 import { AiAssistDialog } from './AiAssistDialog';
 
 export function EditorPane() {
-  const { markdown, setMarkdown, setScrollPercentage } = useEditorStore();
+  const {
+    markdown,
+    setMarkdown,
+    setScrollPercentage,
+    isScrollSyncEnabled,
+    toggleScrollSync
+  } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const [mounted, setMounted] = React.useState(false);
@@ -36,6 +45,7 @@ export function EditorPane() {
   }, []);
 
   const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (isScrollSyncEnabled === false) return;
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     if (scrollHeight <= clientHeight) return;
     const percentage = scrollTop / (scrollHeight - clientHeight);
@@ -70,12 +80,12 @@ export function EditorPane() {
     const end = textarea.selectionEnd;
     const text = textarea.value;
     const selection = text.substring(start, end);
-    
+
     const content = selection || placeholder;
     const newText = text.substring(0, start) + prefix + content + suffix + text.substring(end);
-    
+
     setMarkdown(newText);
-    
+
     // Restore focus and selection
     setTimeout(() => {
       textarea.focus();
@@ -140,24 +150,24 @@ export function EditorPane() {
   return (
     <div className="h-full w-full bg-transparent flex flex-col relative group">
       <AiAssistDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
-      
+
       <div className="sticky top-0 z-10 flex-none px-4 py-2 border-b border-border/40 bg-background/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 overflow-x-auto no-scrollbar shrink-0 transition-all">
         {/* Formatting Toolbar */}
         <div className="flex items-center gap-1 shrink-0">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-7 w-7" 
-            onClick={() => useEditorStore.temporal.getState().undo()} 
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => useEditorStore.temporal.getState().undo()}
             title="撤销 (Cmd+Z)"
           >
             <Undo2 className="w-4 h-4" />
           </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-7 w-7" 
-            onClick={() => useEditorStore.temporal.getState().redo()} 
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => useEditorStore.temporal.getState().redo()}
             title="重做 (Cmd+Shift+Z)"
           >
             <Redo2 className="w-4 h-4" />
@@ -198,36 +208,49 @@ export function EditorPane() {
 
         {/* Magic Actions */}
         <div className="flex flex-wrap items-center gap-1 shrink-0 pl-2 border-l max-w-[180px] sm:max-w-none">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
-              onClick={handleAutoFormat}
-              title="基于规则的快速格式化"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">正则排版</span>
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
-              onClick={handleWeChatLinks}
-              title="将外链转换为底部引用"
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">链接转引用</span>
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
-              onClick={() => setIsAiDialogOpen(true)}
-              title="调用 DeepSeek/Kimi 辅助排版"
-            >
-              <Bot className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">AI 辅助</span>
-            </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
+            onClick={handleAutoFormat}
+            title="基于规则的快速格式化"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">正则排版</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
+            onClick={handleWeChatLinks}
+            title="将外链转换为底部引用"
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">链接转引用</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
+            onClick={() => setIsAiDialogOpen(true)}
+            title="调用 DeepSeek/Kimi 辅助排版"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">AI 辅助</span>
+          </Button>
+
+          <div className="w-[1px] h-4 bg-border/40 mx-1" />
+
+          <Button
+            variant={isScrollSyncEnabled !== false ? "secondary" : "ghost"}
+            size="sm"
+            className={cn("h-7 px-2 text-xs gap-1.5", isScrollSyncEnabled !== false ? "text-primary/80" : "text-muted-foreground")}
+            onClick={toggleScrollSync}
+            title="控制两侧面板是否同步滚动"
+          >
+            {isScrollSyncEnabled !== false ? <Link className="w-3.5 h-3.5" /> : <Unlink className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{isScrollSyncEnabled !== false ? "取消联动" : "滚动联动"}</span>
+          </Button>
         </div>
       </div>
 
@@ -245,16 +268,16 @@ export function EditorPane() {
 
       {/* Bottom Action / Info Bar for Editor */}
       <div className="flex-none px-4 sm:px-6 py-3 sm:py-4 border-t border-border/40 bg-background/50 backdrop-blur-md flex flex-wrap items-center justify-between gap-2 transition-all">
-          <div className="flex items-center gap-2 min-w-0">
-              <Wand2 size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-              <span className="text-[12.5px] font-medium text-foreground">
-                  <span className="hidden sm:inline">支持直接粘贴 <span className="text-muted-foreground">飞书、Notion或Word等</span> 富文本，自动净化为 Markdown</span>
-                  <span className="sm:hidden">支持直接粘贴 <span className="text-muted-foreground">飞书、Notion或Word等</span> 富文本</span>
-              </span>
-          </div>
-          <div className="text-[12px] font-mono text-muted-foreground">
-              {markdown.length} 字
-          </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <Wand2 size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+          <span className="text-[12.5px] font-medium text-foreground">
+            <span className="hidden sm:inline">支持直接粘贴 <span className="text-muted-foreground">飞书、Notion或Word等</span> 富文本，自动净化为 Markdown</span>
+            <span className="sm:hidden">支持直接粘贴 <span className="text-muted-foreground">飞书、Notion或Word等</span> 富文本</span>
+          </span>
+        </div>
+        <div className="text-[12px] font-mono text-muted-foreground">
+          {markdown.length} 字
+        </div>
       </div>
     </div>
   );

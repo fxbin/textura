@@ -3,12 +3,12 @@ import { persist } from 'zustand/middleware';
 import { temporal } from 'zundo';
 import { indexedDBStorage } from './indexedDBStorage';
 
-export type ThemeId = 
-  | 'default' 
-  | 'minimal-line' 
-  | 'card-box' 
-  | 'mint-fresh' 
-  | 'side-color' 
+export type ThemeId =
+  | 'default'
+  | 'minimal-line'
+  | 'card-box'
+  | 'mint-fresh'
+  | 'side-color'
   | 'tech-blue'
   | 'retro-newspaper'
   | 'lavender-dream'
@@ -18,9 +18,9 @@ export type ThemeId =
   | 'custom'
   | string;
 
-export type DeviceModel = 
-  | 'iphone-15-pro-max' 
-  | 'android-flagship' 
+export type DeviceModel =
+  | 'iphone-15-pro-max'
+  | 'android-flagship'
   | 'pc'
   | 'custom';
 
@@ -58,16 +58,17 @@ interface EditorState {
   customHeight: number;
   customThemeCss: string;
   isSidebarOpen: boolean;
+  isScrollSyncEnabled: boolean;
   savedThemes: SavedTheme[];
   aiProvider: 'deepseek' | 'kimi' | 'doubao' | 'chatgpt';
-  
+
   // AI API 配置
   aiApiConfig: AiApiConfig;
-  
+
   // 设置对话框状态
   isSettingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
-  
+
   // Transient state (not persisted typically, but okay here)
   scrollPercentage: number;
 
@@ -82,12 +83,13 @@ interface EditorState {
   setCustomSize: (width: number, height: number) => void;
   setCustomThemeCss: (css: string) => void;
   toggleSidebar: () => void;
+  toggleScrollSync: () => void;
   setAiProvider: (provider: 'deepseek' | 'kimi' | 'doubao' | 'chatgpt') => void;
   setAiApiConfig: (config: Partial<AiApiConfig>) => void;
-  
+
   // Actions
   resetMarkdown: () => void;
-  
+
   // Custom Theme Actions
   addSavedTheme: (id: string, name: string, css: string) => void;
   updateSavedTheme: (id: string, name: string, css: string) => void;
@@ -288,80 +290,83 @@ export const useEditorStore = create<EditorState>()(
     persist(
       (set) => ({
         markdown: defaultMarkdown,
-      theme: 'default',
-      fontSize: 16,
-      deviceModel: 'pc',
-      customWidth: 375,
-      customHeight: 800,
-      customThemeCss: defaultCustomCss,
-      isSidebarOpen: true,
-      savedThemes: [],
-      aiProvider: 'deepseek',
-      aiApiConfig: {
-        provider: 'deepseek',
-        apiKey: '',
-        model: 'deepseek-chat',
-      },
-      isSettingsOpen: false,
-      scrollPercentage: 0,
-      _hasHydrated: false,
+        theme: 'default',
+        fontSize: 16,
+        deviceModel: 'pc',
+        customWidth: 375,
+        customHeight: 800,
+        customThemeCss: defaultCustomCss,
+        isSidebarOpen: true,
+        isScrollSyncEnabled: true,
+        savedThemes: [],
+        aiProvider: 'deepseek',
+        aiApiConfig: {
+          provider: 'deepseek',
+          apiKey: '',
+          model: 'deepseek-chat',
+        },
+        isSettingsOpen: false,
+        scrollPercentage: 0,
+        _hasHydrated: false,
 
-      setHasHydrated: (state) => set({ _hasHydrated: state }),
-      setMarkdown: (markdown) => set({ markdown }),
-      setScrollPercentage: (scrollPercentage) => set({ scrollPercentage }),
-      setTheme: (theme) => set({ theme }),
-      setFontSize: (fontSize) => set({ fontSize }),
-      setDeviceModel: (deviceModel) => set({ deviceModel }),
-      setCustomSize: (customWidth, customHeight) => set({ customWidth, customHeight }),
-      setCustomThemeCss: (customThemeCss) => set({ customThemeCss }),
-      toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-      setAiProvider: (aiProvider) => set({ aiProvider }),
-      setAiApiConfig: (config) => set((state) => ({ 
-        aiApiConfig: { ...state.aiApiConfig, ...config } 
-      })),
-      setSettingsOpen: (open) => set({ isSettingsOpen: open }),
-      resetMarkdown: () => set({ markdown: defaultMarkdown }),
+        setHasHydrated: (state) => set({ _hasHydrated: state }),
+        setMarkdown: (markdown) => set({ markdown }),
+        setScrollPercentage: (scrollPercentage) => set({ scrollPercentage }),
+        setTheme: (theme) => set({ theme }),
+        setFontSize: (fontSize) => set({ fontSize }),
+        setDeviceModel: (deviceModel) => set({ deviceModel }),
+        setCustomSize: (customWidth, customHeight) => set({ customWidth, customHeight }),
+        setCustomThemeCss: (customThemeCss) => set({ customThemeCss }),
+        toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+        toggleScrollSync: () => set((state) => ({ isScrollSyncEnabled: !state.isScrollSyncEnabled })),
+        setAiProvider: (aiProvider) => set({ aiProvider }),
+        setAiApiConfig: (config) => set((state) => ({
+          aiApiConfig: { ...state.aiApiConfig, ...config }
+        })),
+        setSettingsOpen: (open) => set({ isSettingsOpen: open }),
+        resetMarkdown: () => set({ markdown: defaultMarkdown }),
 
-      addSavedTheme: (id, name, css) => set((state) => {
-        const newTheme: SavedTheme = {
-          id,
-          name,
-          css,
-          updatedAt: Date.now(),
-        };
-        return { savedThemes: [...state.savedThemes, newTheme] };
+        addSavedTheme: (id, name, css) => set((state) => {
+          const newTheme: SavedTheme = {
+            id,
+            name,
+            css,
+            updatedAt: Date.now(),
+          };
+          return { savedThemes: [...state.savedThemes, newTheme] };
+        }),
+
+        updateSavedTheme: (id, name, css) => set((state) => ({
+          savedThemes: state.savedThemes.map((t) =>
+            t.id === id ? { ...t, name, css, updatedAt: Date.now() } : t
+          )
+        })),
+
+        deleteSavedTheme: (id) => set((state) => ({
+          savedThemes: state.savedThemes.filter((t) => t.id !== id),
+          theme: state.theme === id ? 'default' : state.theme
+        })),
       }),
-
-      updateSavedTheme: (id, name, css) => set((state) => ({
-        savedThemes: state.savedThemes.map((t) => 
-          t.id === id ? { ...t, name, css, updatedAt: Date.now() } : t
-        )
-      })),
-
-      deleteSavedTheme: (id) => set((state) => ({
-        savedThemes: state.savedThemes.filter((t) => t.id !== id),
-        theme: state.theme === id ? 'default' : state.theme
-      })),
-    }),
+      {
+        name: 'textura-storage',
+        storage: indexedDBStorage,
+        partialize: (state) => ({
+          savedThemes: state.savedThemes,
+          customThemeCss: state.customThemeCss,
+          markdown: state.markdown,
+          theme: state.theme,
+          isSidebarOpen: state.isSidebarOpen,
+          isScrollSyncEnabled: state.isScrollSyncEnabled,
+          aiProvider: state.aiProvider,
+          aiApiConfig: state.aiApiConfig
+        }),
+        onRehydrateStorage: () => (state) => {
+          state?.setHasHydrated(true);
+        },
+      }
+    ),
     {
-      name: 'textura-storage',
-      storage: indexedDBStorage,
-      partialize: (state) => ({ 
-        savedThemes: state.savedThemes, 
-        customThemeCss: state.customThemeCss,
-        markdown: state.markdown,
-        theme: state.theme,
-        isSidebarOpen: state.isSidebarOpen,
-        aiProvider: state.aiProvider,
-        aiApiConfig: state.aiApiConfig
-      }),
-      onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
-      },
+      partialize: (state) => ({ markdown: state.markdown }),
+      limit: 100,
     }
-  ),
-  {
-    partialize: (state) => ({ markdown: state.markdown }),
-    limit: 100,
-  }
-));
+  ));
