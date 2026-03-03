@@ -3,11 +3,12 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { 
-  Download, Copy, PanelRightClose, PanelRightOpen, 
-  FileText, ChevronDown, FolderOpen, Save, Check, 
+import {
+  Download, Copy, PanelRightClose, PanelRightOpen,
+  FileText, ChevronDown, FolderOpen, Save, Check,
   RotateCcw, Sparkles, Printer, FileCode, FileImage, File
 } from 'lucide-react';
+import Image from 'next/image';
 import { toast } from 'sonner';
 import juice from 'juice';
 import { SettingsDialog } from './SettingsDialog';
@@ -25,7 +26,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
-import { 
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -69,8 +70,8 @@ export function TopNav() {
       const htmlContent = previewElement.outerHTML;
       const styleTag = previewElement.parentElement?.querySelector('style');
       const css = styleTag ? styleTag.innerHTML : '';
-      
-      const inlinedHtml = juice(htmlContent, { 
+
+      const inlinedHtml = juice(htmlContent, {
         extraCss: css,
         applyStyleTags: true,
         removeStyleTags: true,
@@ -136,8 +137,8 @@ export function TopNav() {
       const htmlContent = previewElement.outerHTML;
       const styleTag = previewElement.parentElement?.querySelector('style');
       const css = styleTag ? styleTag.innerHTML : '';
-      
-      const inlinedHtml = juice(htmlContent, { 
+
+      const inlinedHtml = juice(htmlContent, {
         extraCss: css,
         applyStyleTags: true,
         removeStyleTags: true,
@@ -146,7 +147,7 @@ export function TopNav() {
 
       const blob = new Blob([inlinedHtml], { type: 'text/html' });
       const plainText = new Blob([previewElement.textContent || ''], { type: 'text/plain' });
-      
+
       const item = new ClipboardItem({
         'text/html': blob,
         'text/plain': plainText
@@ -166,27 +167,27 @@ export function TopNav() {
   };
 
   const legacyCopy = (html: string) => {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = html;
-      tempDiv.style.position = 'fixed';
-      tempDiv.style.left = '-9999px';
-      document.body.appendChild(tempDiv);
-      
-      const range = document.createRange();
-      range.selectNode(tempDiv);
-      const selection = window.getSelection();
-      if (selection) {
-        selection.removeAllRanges();
-        selection.addRange(range);
-        try {
-          document.execCommand('copy');
-          toast.success('已复制到剪贴板 (Legacy Mode)');
-        } catch (e) {
-          toast.error('复制失败');
-        }
-        selection.removeAllRanges();
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    tempDiv.style.position = 'fixed';
+    tempDiv.style.left = '-9999px';
+    document.body.appendChild(tempDiv);
+
+    const range = document.createRange();
+    range.selectNode(tempDiv);
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+      try {
+        document.execCommand('copy');
+        toast.success('已复制到剪贴板 (Legacy Mode)');
+      } catch (e) {
+        toast.error('复制失败');
       }
-      document.body.removeChild(tempDiv);
+      selection.removeAllRanges();
+    }
+    document.body.removeChild(tempDiv);
   }
 
   return (
@@ -194,12 +195,12 @@ export function TopNav() {
       {/* Left: Brand */}
       <div className="flex items-center gap-3 select-none">
         <div className="flex items-center gap-2 group cursor-pointer transition-opacity hover:opacity-80">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-            <Sparkles className="w-4 h-4 fill-primary/20" />
+          <div className="w-8 h-8 flex items-center justify-center overflow-hidden rounded-md">
+            <Image src="/logo.png" alt="Textura Logo" width={32} height={32} className="object-cover" />
           </div>
           <div className="flex flex-col justify-center">
-             <span className="font-bold text-sm tracking-tight text-foreground/90">Textura</span>
-             <span className="text-[10px] text-muted-foreground font-medium">禅模式排版</span>
+            <span className="font-bold text-sm tracking-tight text-foreground/90">Textura</span>
+            <span className="text-[10px] text-muted-foreground font-medium">禅模式排版</span>
           </div>
         </div>
       </div>
@@ -219,7 +220,7 @@ export function TopNav() {
             <DropdownMenuLabel>加载示例内容</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {examples.map((example) => (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 key={example.id}
                 onClick={() => handleLoadExample(example.content, example.name)}
                 className="flex flex-col items-start gap-1 py-2"
@@ -260,9 +261,9 @@ export function TopNav() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-               <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                 <Download className="w-3.5 h-3.5" />
-               </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                <Download className="w-3.5 h-3.5" />
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuLabel>导出与保存</DropdownMenuLabel>
@@ -317,9 +318,9 @@ export function TopNav() {
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={toggleSidebar}
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
             >
@@ -332,9 +333,9 @@ export function TopNav() {
         <Separator orientation="vertical" className="h-6 mx-1 bg-border/40" />
 
         {/* Primary Action */}
-        <Button 
-          onClick={handleCopy} 
-          size="sm" 
+        <Button
+          onClick={handleCopy}
+          size="sm"
           className="h-8 px-4 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all active:scale-95 font-medium text-xs gap-1.5 rounded-md"
         >
           <Copy className="w-3.5 h-3.5" />
