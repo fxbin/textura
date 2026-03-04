@@ -1,0 +1,21 @@
+
+version: '3.8'
+
+services:
+  textura:
+    container_name: textura-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      # Add other environment variables here if needed
+    networks:
+      - textura-net
+
+networks:
+  textura-net:
+    driver: bridge

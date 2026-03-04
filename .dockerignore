@@ -1,0 +1,14 @@
+
+node_modules
+.next
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+README.md
+LICENSE
+src-tauri
+npm-debug.log
+yarn-error.log
+.DS_Store
