@@ -3,14 +3,16 @@ version: '3.8'
 services:
   # Next.js Application Service
   textura:
+    # 生产环境使用预构建镜像
+    # 请将此处的 image 替换为您实际构建/推送的镜像名称
+    # 例如: ghcr.io/your-username/textura:latest
+    image: textura:latest 
     container_name: textura-web
-    # 开发环境使用源码构建
-    build:
-      context: .
-      dockerfile: Dockerfile
     restart: always
     environment:
       - NODE_ENV=production
+      # 如果需要配置 AI API Key，可以在这里添加，或者使用 .env 文件
+      # - OPENAI_API_KEY=sk-...
     networks:
       - textura-net
     # No ports exposed to host, only internal network
@@ -24,6 +26,7 @@ services:
       - "80:80"
       # - "443:443" # Uncomment for HTTPS later
     volumes:
+      # 复用项目根目录下的 nginx 配置
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - textura
