@@ -2,17 +2,31 @@
 version: '3.8'
 
 services:
+  # Next.js Application Service
   textura:
     container_name: textura-web
     build:
       context: .
       dockerfile: Dockerfile
     restart: always
-    ports:
-      - "3001:3000"
     environment:
       - NODE_ENV=production
-      # Add other environment variables here if needed
+    networks:
+      - textura-net
+    # No ports exposed to host, only internal network
+
+  # Nginx Reverse Proxy Service
+  nginx:
+    image: nginx:alpine
+    container_name: textura-nginx
+    restart: always
+    ports:
+      - "80:80"
+      # - "443:443" # Uncomment for HTTPS later
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - textura
     networks:
       - textura-net
 
