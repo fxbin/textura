@@ -20,14 +20,14 @@ import {
   Undo2,
   Redo2,
   Link,
-  Unlink
+  Unlink,
+  BarChart2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { autoFormatMarkdown, formatWeChatLinks } from '@/lib/formatter';
 import { handleSmartPaste } from '@/lib/htmlToMarkdown';
 import { AiAssistDialog } from './AiAssistDialog';
-import { StatsDialog } from './StatsDialog';
 
 export function EditorPane() {
   const {
@@ -35,10 +35,10 @@ export function EditorPane() {
     setMarkdown,
     setScrollPercentage,
     isScrollSyncEnabled,
-    toggleScrollSync
+    toggleScrollSync,
+    toggleStats
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
-  const [isStatsOpen, setIsStatsOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const [mounted, setMounted] = React.useState(false);
 
@@ -234,6 +234,16 @@ export function EditorPane() {
             variant="ghost"
             size="sm"
             className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
+            onClick={toggleStats}
+            title="显示/隐藏字数统计"
+          >
+            <BarChart2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">字数统计</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
             onClick={() => setIsAiDialogOpen(true)}
             title="调用 DeepSeek/Kimi 辅助排版"
           >
@@ -279,15 +289,14 @@ export function EditorPane() {
         </div>
         <div 
           className="text-[12px] font-mono text-muted-foreground hover:text-foreground cursor-pointer transition-colors hover:bg-muted/50 px-2 py-1 rounded-md select-none"
-          onClick={() => setIsStatsOpen(true)}
-          title="点击查看详细统计"
+          onClick={toggleStats}
+          title="点击切换预览区字数统计"
         >
           {markdown.length} 字
         </div>
       </div>
 
       <AiAssistDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
-      <StatsDialog open={isStatsOpen} onOpenChange={setIsStatsOpen} markdown={markdown} />
     </div>
   );
 }

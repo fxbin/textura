@@ -38,7 +38,8 @@ export function PreviewPane() {
     customHeight,
     setCustomSize,
     customThemeCss,
-    savedThemes
+    savedThemes,
+    isStatsVisible
   } = useEditorStore();
   const [mounted, setMounted] = React.useState(false);
   const [htmlContent, setHtmlContent] = React.useState('');
@@ -184,11 +185,15 @@ export function PreviewPane() {
         ) : (
           <>
             {/* Stats Banner */}
-            <div className="mb-8 p-4 bg-[#1a1a1a] rounded-lg border-l-4 border-[#ff4d4f] shadow-sm mx-5 mt-5">
-              <p className="text-sm text-gray-300 font-medium">
-                字数 {stats.count}，阅读大约需 {stats.time} 分钟
-              </p>
-            </div>
+            {isStatsVisible && (
+              <div className="flex justify-center mb-6 mt-4 animate-in fade-in slide-in-from-top-2">
+                <div className="inline-flex items-center gap-3 px-3 py-1.5 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm border border-black/5 dark:border-white/5 text-[11px] font-medium text-muted-foreground select-none shadow-sm transition-all hover:bg-black/10 dark:hover:bg-white/15">
+                   <span className="font-mono">字数 {stats.count}</span>
+                   <span className="w-px h-3 bg-border/50" />
+                   <span>约 {stats.time} 分钟</span>
+                </div>
+              </div>
+            )}
 
             {isPresetTheme ? (
               // WeChat Mode: Raw HTML with inline styles
