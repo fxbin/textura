@@ -2,8 +2,16 @@
 
 import { GripVerticalIcon } from "lucide-react"
 import { Panel, Group, Separator } from "react-resizable-panels"
+import * as React from "react"
 
 import { cn } from "@/lib/utils"
+
+export type ImperativePanelHandle = {
+  collapse: () => void;
+  expand: () => void;
+  resize: (size: number) => void;
+  getSize: () => number;
+};
 
 function ResizablePanelGroup({
   className,
@@ -21,9 +29,24 @@ function ResizablePanelGroup({
   )
 }
 
-function ResizablePanel({ ...props }: React.ComponentProps<typeof Panel>) {
-  return <Panel data-slot="resizable-panel" {...props} />
-}
+const ResizablePanel = React.forwardRef<
+  ImperativePanelHandle,
+  React.ComponentProps<typeof Panel>
+>(({ className, ...props }, ref) => {
+  return (
+    <Panel
+      // @ts-ignore - Panel ref type mismatch workaround
+      ref={ref}
+      data-slot="resizable-panel"
+      className={cn(
+        "flex h-full w-full data-[panel-group-direction=vertical]:h-auto data-[panel-group-direction=vertical]:w-full",
+        className
+      )}
+      {...props}
+    />
+  )
+})
+ResizablePanel.displayName = "ResizablePanel"
 
 function ResizableHandle({
   withHandle,

@@ -171,8 +171,8 @@ export function ThemeSelector() {
   };
 
   return (
-    <div className="h-full w-full bg-background/95 backdrop-blur-sm flex flex-col border-l border-border/50 overflow-hidden">
-      <div className="flex-none p-4 border-b bg-muted/30 shrink-0">
+    <div className="h-full w-full bg-background flex flex-col overflow-hidden">
+      <div className="flex-none p-4 border-b bg-muted/30 shrink-0 hidden">
         <h2 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
           <span className="w-1 h-4 bg-primary rounded-full" />
           选择模板

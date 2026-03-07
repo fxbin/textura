@@ -31,8 +31,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { ThemeSelector } from '@/components/editor/ThemeSelector';
 import { examples } from '@/lib/examples';
 
 export function TopNav() {
@@ -316,19 +322,26 @@ export function TopNav() {
         <SettingsDialog />
         <HistoryDialog />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
+        <Sheet open={isSidebarOpen} onOpenChange={toggleSidebar}>
+          <SheetTrigger asChild>
             <Button
               variant="ghost"
-              size="icon"
-              onClick={toggleSidebar}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              size="sm"
+              className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1.5"
             >
-              {isSidebarOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+              <PanelRightOpen className="w-4 h-4" />
+              <span className="text-xs font-medium">样式模板</span>
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>{isSidebarOpen ? "收起侧边栏" : "展开侧边栏"}</TooltipContent>
-        </Tooltip>
+          </SheetTrigger>
+          <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-background border-l">
+             <SheetHeader className="px-6 py-4 border-b shrink-0">
+               <SheetTitle className="text-base font-medium">选择排版样式</SheetTitle>
+             </SheetHeader>
+             <div className="flex-1 overflow-hidden">
+               <ThemeSelector />
+             </div>
+          </SheetContent>
+        </Sheet>
 
         <Separator orientation="vertical" className="h-6 mx-1 bg-border/40" />
 
