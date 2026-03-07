@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { autoFormatMarkdown, formatWeChatLinks } from '@/lib/formatter';
 import { handleSmartPaste } from '@/lib/htmlToMarkdown';
 import { AiAssistDialog } from './AiAssistDialog';
+import { StatsDialog } from './StatsDialog';
 
 export function EditorPane() {
   const {
@@ -37,6 +38,7 @@ export function EditorPane() {
     toggleScrollSync
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
+  const [isStatsOpen, setIsStatsOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const [mounted, setMounted] = React.useState(false);
 
@@ -275,10 +277,17 @@ export function EditorPane() {
             <span className="sm:hidden">支持直接粘贴 <span className="text-muted-foreground">飞书、Notion或Word等</span> 富文本</span>
           </span>
         </div>
-        <div className="text-[12px] font-mono text-muted-foreground">
+        <div 
+          className="text-[12px] font-mono text-muted-foreground hover:text-foreground cursor-pointer transition-colors hover:bg-muted/50 px-2 py-1 rounded-md select-none"
+          onClick={() => setIsStatsOpen(true)}
+          title="点击查看详细统计"
+        >
           {markdown.length} 字
         </div>
       </div>
+
+      <AiAssistDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
+      <StatsDialog open={isStatsOpen} onOpenChange={setIsStatsOpen} markdown={markdown} />
     </div>
   );
 }

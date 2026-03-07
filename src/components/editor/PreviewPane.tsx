@@ -144,6 +144,30 @@ export function PreviewPane() {
     return () => unsubscribe();
   }, []);
 
+  const stats = React.useMemo(() => {
+    // 移除空白字符进行纯字符统计
+    const cleanText = markdown.replace(/\s/g, '');
+    const charCount = cleanText.length;
+    
+    // 统计中文字符
+    const chineseChars = markdown.match(/[\u4e00-\u9fa5]/g) || [];
+    const chineseCount = chineseChars.length;
+    
+    // 统计英文单词
+    const nonChineseText = markdown.replace(/[\u4e00-\u9fa5]/g, ' ');
+    const words = nonChineseText.trim().split(/\s+/).filter(w => w.length > 0);
+    const wordCount = words.length;
+    
+    // 计算阅读时间
+    const readTimeMinutes = (chineseCount / 400) + (wordCount / 200);
+    const readTime = Math.ceil(readTimeMinutes) || 1;
+
+    return {
+      count: charCount,
+      time: readTime
+    };
+  }, [markdown]);
+
   const renderContent = () => (
     <div
       id="print-area"
@@ -159,6 +183,13 @@ export function PreviewPane() {
           </div>
         ) : (
           <>
+            {/* Stats Banner */}
+            <div className="mb-8 p-4 bg-[#1a1a1a] rounded-lg border-l-4 border-[#ff4d4f] shadow-sm mx-5 mt-5">
+              <p className="text-sm text-gray-300 font-medium">
+                字数 {stats.count}，阅读大约需 {stats.time} 分钟
+              </p>
+            </div>
+
             {isPresetTheme ? (
               // WeChat Mode: Raw HTML with inline styles
               <div
