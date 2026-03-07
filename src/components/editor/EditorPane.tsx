@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { autoFormatMarkdown, formatWeChatLinks } from '@/lib/formatter';
 import { handleSmartPaste } from '@/lib/htmlToMarkdown';
 import { AiAssistDialog } from './AiAssistDialog';
+import { listen } from '@tauri-apps/api/event';
 
 export function EditorPane() {
   const {
@@ -45,6 +46,75 @@ export function EditorPane() {
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  const insertFormat = (prefix: string, suffix: string = '', placeholder: string = 'text') => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selection = text.substring(start, end);
+
+    const content = selection || placeholder;
+    const newText = text.substring(0, start) + prefix + content + suffix + text.substring(end);
+
+    setMarkdown(newText);
+
+    // Restore focus and selection
+    setTimeout(() => {
+      textarea.focus();
+      // Select the inserted content
+      textarea.setSelectionRange(
+        start + prefix.length,
+        start + prefix.length + content.length
+      );
+    }, 0);
+  };
+
+  // Listen for Menu Events from Rust
+  React.useEffect(() => {
+    // 只有在 Tauri 环境下才监听菜单事件，防止 Web 端报错
+    if (typeof window === 'undefined' || !('__TAURI__' in window)) {
+      return;
+    }
+
+    const unlisten = listen('menu-event', (event) => {
+      const id = event.payload as string;
+      switch (id) {
+        case 'format_bold': insertFormat('**', '**', '加粗'); break;
+        case 'format_italic': insertFormat('*', '*', '斜体'); break;
+        case 'format_strike': insertFormat('~~', '~~', '删除线'); break;
+        case 'format_link': insertFormat('[', '](url)', '链接文字'); break;
+        case 'format_code': insertFormat('`', '`', '代码'); break;
+        case 'format_h1': insertFormat('# ', '', '标题'); break;
+        case 'format_h2': insertFormat('## ', '', '标题'); break;
+        case 'format_h3': insertFormat('### ', '', '标题'); break;
+        case 'format_ul': insertFormat('- ', '', '列表项'); break;
+        case 'format_ol': insertFormat('1. ', '', '列表项'); break;
+        
+        case 'format_wechat_links': {
+           const currentMd = useEditorStore.getState().markdown;
+           if (!currentMd.trim()) { 
+             toast.error('请先输入一些内容'); 
+             return; 
+           }
+           const formatted = formatWeChatLinks(currentMd);
+           setMarkdown(formatted);
+           toast.success('链接已转换为引用！');
+           break;
+        }
+        case 'toggle_stats': {
+           toggleStats();
+           break;
+        }
+      }
+    });
+
+    return () => {
+      unlisten.then(f => f());
+    };
+  }, []); // insertFormat is stable enough because it uses refs and setMarkdown (which is stable from zustand)
 
   const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
     if (isScrollSyncEnabled === false) return;
@@ -72,31 +142,6 @@ export function EditorPane() {
     const formatted = formatWeChatLinks(markdown);
     setMarkdown(formatted);
     toast.success('链接已转换为引用！');
-  };
-
-  const insertFormat = (prefix: string, suffix: string = '', placeholder: string = 'text') => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selection = text.substring(start, end);
-
-    const content = selection || placeholder;
-    const newText = text.substring(0, start) + prefix + content + suffix + text.substring(end);
-
-    setMarkdown(newText);
-
-    // Restore focus and selection
-    setTimeout(() => {
-      textarea.focus();
-      // Select the inserted content
-      textarea.setSelectionRange(
-        start + prefix.length,
-        start + prefix.length + content.length
-      );
-    }, 0);
   };
 
   const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {

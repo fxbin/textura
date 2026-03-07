@@ -26,7 +26,8 @@ import 'heti/umd/heti.min.css';
 import 'highlight.js/styles/github.css';
 import DeviceFrame from '@/components/preview/DeviceFrame';
 import { Mermaid } from './Mermaid';
-import mermaid from 'mermaid';
+// import mermaid from 'mermaid';
+import { renderMermaidSVG } from 'beautiful-mermaid';
 
 export function PreviewPane() {
   const {
@@ -72,25 +73,70 @@ export function PreviewPane() {
 
         if (mermaidBlocks.length > 0) {
           // Initialize mermaid if needed (safe to call multiple times)
-          mermaid.initialize({
-            startOnLoad: false,
-            theme: 'default',
-            securityLevel: 'loose',
-          });
+          // mermaid.initialize({
+          //   startOnLoad: false,
+          //   theme: 'default',
+          //   securityLevel: 'loose',
+          // });
 
           for (let i = 0; i < mermaidBlocks.length; i++) {
             const block = mermaidBlocks[i];
-            const graphDefinition = block.textContent || '';
+            let graphDefinition = block.textContent || '';
             const id = `mermaid-svg-${Date.now()}-${i}`;
             
+            // Try to auto-fix common Chinese quote issues in mermaid code
+            // Replace Chinese quotes with English quotes
+            graphDefinition = graphDefinition
+              .replace(/“/g, '"')
+              .replace(/”/g, '"');
+
             try {
-              // Render SVG
-              const { svg } = await mermaid.render(id, graphDefinition);
+              // Render SVG using beautiful-mermaid
+              const svg = renderMermaidSVG(graphDefinition, {
+                bg: '#ffffff',
+                fg: '#1f2937', // gray-800
+                // Optional: make it look a bit nicer
+                line: '#4b5563', // gray-600
+              });
               
+              // Helper to parse SVG dimensions
+              const getSvgDimensions = (svgStr: string) => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(svgStr, 'image/svg+xml');
+                const svgEl = doc.querySelector('svg');
+                if (!svgEl) return { width: 0, height: 0 };
+                
+                let width = parseFloat(svgEl.getAttribute('width') || '0');
+                let height = parseFloat(svgEl.getAttribute('height') || '0');
+                
+                if (width === 0 || height === 0) {
+                  const viewBox = svgEl.getAttribute('viewBox');
+                  if (viewBox) {
+                    const parts = viewBox.split(/\s+|,/).map(Number);
+                    if (parts.length === 4) {
+                      width = parts[2];
+                      height = parts[3];
+                    }
+                  }
+                }
+                return { width, height };
+              };
+
+              const dims = getSvgDimensions(svg);
+              
+              // Force dimensions on the SVG string if needed for img.onload to pick it up correctly
+              let fixedSvg = svg;
+              if (!svg.includes('width=') || svg.includes('width="100%"')) {
+                 if (dims.width > 0) {
+                   // Replace or inject width/height
+                   fixedSvg = fixedSvg.replace('<svg', `<svg width="${dims.width}" height="${dims.height}"`);
+                 }
+              }
+
               // Convert SVG to PNG Data URL for WeChat compatibility
               // WeChat doesn't support inline SVG well, but supports base64 images
               const img = document.createElement('img');
-              const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+              const svgBlob = new Blob([fixedSvg], { type: 'image/svg+xml;charset=utf-8' });
               const url = URL.createObjectURL(svgBlob);
               
               await new Promise((resolve, reject) => {
@@ -98,10 +144,23 @@ export function PreviewPane() {
                   const canvas = document.createElement('canvas');
                   // Scale up for better quality (Retina)
                   const scale = 2; 
-                  canvas.width = img.width * scale;
-                  canvas.height = img.height * scale;
+                  // Use dimensions from SVG parsing if img.width is unreliable (e.g. 0)
+                  const finalWidth = img.width || dims.width;
+                  const finalHeight = img.height || dims.height;
+
+                  if (finalWidth === 0 || finalHeight === 0) {
+                    // Fallback or skip
+                    resolve(null);
+                    return;
+                  }
+
+                  canvas.width = finalWidth * scale;
+                  canvas.height = finalHeight * scale;
                   const ctx = canvas.getContext('2d');
                   if (ctx) {
+                    // Fill white background for non-transparent result (safer for copy-paste)
+                    // But maybe transparent is better? WeChat usually has white bg.
+                    // Let's keep it transparent but ensure we draw correctly.
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     const pngUrl = canvas.toDataURL('image/png');
                     
@@ -123,9 +182,22 @@ export function PreviewPane() {
                 img.onerror = reject;
                 img.src = url;
               });
-            } catch (err) {
+            } catch (err: any) {
               console.error('Failed to render mermaid diagram:', err);
-              // Leave as code block if failed
+              // Leave as code block if failed, but add error message
+              const preParent = block.parentElement;
+              if (preParent && preParent.tagName === 'PRE') {
+                const errorDiv = document.createElement('div');
+                errorDiv.style.color = '#ef4444';
+                errorDiv.style.fontSize = '12px';
+                errorDiv.style.padding = '8px';
+                errorDiv.style.marginTop = '4px';
+                errorDiv.style.backgroundColor = '#fef2f2';
+                errorDiv.style.borderRadius = '4px';
+                errorDiv.style.border = '1px solid #fee2e2';
+                errorDiv.innerText = `Mermaid Error: ${err.message || 'Syntax error'}`;
+                preParent.appendChild(errorDiv);
+              }
             }
           }
           styledHtml = doc.body.innerHTML;
