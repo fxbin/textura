@@ -18,6 +18,7 @@ import { Copy, ExternalLink, ArrowRight, Bot, Sparkles, Zap, Loader2, Settings }
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { callAiFormatting } from '@/lib/aiService';
+import { openExternalLink } from '@/lib/link';
 
 interface AiAssistDialogProps {
   open: boolean;
@@ -90,7 +91,7 @@ ${markdown}`;
   const handleOpenAi = () => {
     const provider = AI_PROVIDERS.find(p => p.id === aiProvider);
     if (provider) {
-      window.open(provider.url, '_blank');
+      openExternalLink(provider.url);
       toast.info(`已打开 ${provider.name}，请粘贴 Prompt`);
     }
   };
