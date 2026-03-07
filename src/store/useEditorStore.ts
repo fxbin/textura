@@ -59,6 +59,7 @@ interface EditorState {
   customThemeCss: string;
   isSidebarOpen: boolean;
   isScrollSyncEnabled: boolean;
+  isStatsVisible: boolean;
   savedThemes: SavedTheme[];
   aiProvider: 'deepseek' | 'kimi' | 'doubao' | 'chatgpt';
 
@@ -84,6 +85,7 @@ interface EditorState {
   setCustomThemeCss: (css: string) => void;
   toggleSidebar: () => void;
   toggleScrollSync: () => void;
+  toggleStats: () => void;
   setAiProvider: (provider: 'deepseek' | 'kimi' | 'doubao' | 'chatgpt') => void;
   setAiApiConfig: (config: Partial<AiApiConfig>) => void;
 
@@ -298,6 +300,7 @@ export const useEditorStore = create<EditorState>()(
         customThemeCss: defaultCustomCss,
         isSidebarOpen: true,
         isScrollSyncEnabled: true,
+        isStatsVisible: false,
         savedThemes: [],
         aiProvider: 'deepseek',
         aiApiConfig: {
@@ -319,6 +322,7 @@ export const useEditorStore = create<EditorState>()(
         setCustomThemeCss: (customThemeCss) => set({ customThemeCss }),
         toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
         toggleScrollSync: () => set((state) => ({ isScrollSyncEnabled: !state.isScrollSyncEnabled })),
+        toggleStats: () => set((state) => ({ isStatsVisible: !state.isStatsVisible })),
         setAiProvider: (aiProvider) => set({ aiProvider }),
         setAiApiConfig: (config) => set((state) => ({
           aiApiConfig: { ...state.aiApiConfig, ...config }
@@ -357,6 +361,7 @@ export const useEditorStore = create<EditorState>()(
           theme: state.theme,
           isSidebarOpen: state.isSidebarOpen,
           isScrollSyncEnabled: state.isScrollSyncEnabled,
+          isStatsVisible: state.isStatsVisible,
           aiProvider: state.aiProvider,
           aiApiConfig: state.aiApiConfig
         }),

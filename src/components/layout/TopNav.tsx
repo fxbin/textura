@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Download, Copy, PanelRightClose, PanelRightOpen,
   FileText, ChevronDown, FolderOpen, Save, Check,
-  RotateCcw, Sparkles, Printer, FileCode, FileImage, File
+  RotateCcw, Sparkles, Printer, FileCode, FileImage, File, Clock
 } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
@@ -42,7 +42,17 @@ import { ThemeSelector } from '@/components/editor/ThemeSelector';
 import { examples } from '@/lib/examples';
 
 export function TopNav() {
-  const { isSidebarOpen, toggleSidebar, resetMarkdown, fontSize, setFontSize, markdown, setMarkdown } = useEditorStore();
+  const { 
+    isSidebarOpen, 
+    toggleSidebar, 
+    resetMarkdown, 
+    fontSize, 
+    setFontSize, 
+    markdown, 
+    setMarkdown,
+    isStatsVisible,
+    toggleStats
+  } = useEditorStore();
 
   const handleReset = () => {
     if (window.confirm('确定要恢复默认示例内容吗？当前内容将被覆盖。')) {
@@ -285,6 +295,11 @@ export function TopNav() {
               <DropdownMenuItem onClick={handleExportPdf}>
                 <Printer className="w-4 h-4 mr-2 text-muted-foreground" />
                 <span>打印 / 导出 PDF</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={toggleStats}>
+                <Clock className="w-4 h-4 mr-2 text-muted-foreground" />
+                <span>{isStatsVisible ? '隐藏字数统计' : '显示字数统计'}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
