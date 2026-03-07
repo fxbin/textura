@@ -26,6 +26,7 @@ import 'heti/umd/heti.min.css';
 import 'highlight.js/styles/github.css';
 import DeviceFrame from '@/components/preview/DeviceFrame';
 import { Mermaid } from './Mermaid';
+import mermaid from 'mermaid';
 
 export function PreviewPane() {
   const {
@@ -57,34 +58,87 @@ export function PreviewPane() {
 
   // Generate HTML content based on mode
   React.useEffect(() => {
-    if (isPresetTheme) {
-      // Use markdown-it + applyTheme for presets (WeChat compatible)
-      const rawHtml = md.render(markdown);
-      const styledHtml = applyTheme(rawHtml, theme);
-      setHtmlContent(styledHtml);
-    } else {
-      // Use ReactMarkdown logic implicitly (handled in render)
-      // Actually, let's try to unify. 
-      // For custom themes, we rely on customThemeCss injected style.
-      // But we can still use md.render() to get HTML.
-      // However, ReactMarkdown allows components like Mermaid.
-      // If we switch entirely to md.render, we lose Mermaid unless we implement a plugin.
-      // Raphael doesn't seem to have Mermaid support in its markdown.ts.
-      // Textura does.
-      // Compromise: Use ReactMarkdown for preview, but generate HTML string for Copy.
-      // Wait, Raphael's key feature is the *preview* matching the *copy*.
-      // If I use ReactMarkdown for preview, it might look different from what I copy (which uses md.render).
-      // I should prioritize WYSIWYG.
-      // I will use md.render for everything if possible.
-      // But Mermaid... 
-      // I'll stick to ReactMarkdown for now for the *visual preview* if it's a custom theme, 
-      // but for Preset Themes (WeChat), I MUST use `dangerouslySetInnerHTML` to see exactly what will be pasted.
+    const processContent = async () => {
       if (isPresetTheme) {
+        // Use markdown-it + applyTheme for presets (WeChat compatible)
         const rawHtml = md.render(markdown);
-        const styledHtml = applyTheme(rawHtml, theme);
+        let styledHtml = applyTheme(rawHtml, theme);
+
+        // Process Mermaid Diagrams
+        // Find all mermaid code blocks and replace them with images
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(styledHtml, 'text/html');
+        const mermaidBlocks = doc.querySelectorAll('code.language-mermaid');
+
+        if (mermaidBlocks.length > 0) {
+          // Initialize mermaid if needed (safe to call multiple times)
+          mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+          });
+
+          for (let i = 0; i < mermaidBlocks.length; i++) {
+            const block = mermaidBlocks[i];
+            const graphDefinition = block.textContent || '';
+            const id = `mermaid-svg-${Date.now()}-${i}`;
+            
+            try {
+              // Render SVG
+              const { svg } = await mermaid.render(id, graphDefinition);
+              
+              // Convert SVG to PNG Data URL for WeChat compatibility
+              // WeChat doesn't support inline SVG well, but supports base64 images
+              const img = document.createElement('img');
+              const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+              const url = URL.createObjectURL(svgBlob);
+              
+              await new Promise((resolve, reject) => {
+                img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  // Scale up for better quality (Retina)
+                  const scale = 2; 
+                  canvas.width = img.width * scale;
+                  canvas.height = img.height * scale;
+                  const ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const pngUrl = canvas.toDataURL('image/png');
+                    
+                    // Replace the <pre><code>...</code></pre> with the <img>
+                    const preParent = block.parentElement;
+                    if (preParent && preParent.tagName === 'PRE') {
+                      const finalImg = document.createElement('img');
+                      finalImg.src = pngUrl;
+                      finalImg.style.maxWidth = '100%';
+                      finalImg.style.height = 'auto';
+                      finalImg.style.display = 'block';
+                      finalImg.style.margin = '20px auto';
+                      preParent.replaceWith(finalImg);
+                    }
+                  }
+                  URL.revokeObjectURL(url);
+                  resolve(null);
+                };
+                img.onerror = reject;
+                img.src = url;
+              });
+            } catch (err) {
+              console.error('Failed to render mermaid diagram:', err);
+              // Leave as code block if failed
+            }
+          }
+          styledHtml = doc.body.innerHTML;
+        }
+        
         setHtmlContent(styledHtml);
+      } else {
+        // For custom mode, we use ReactMarkdown in the render directly
+        // But we might want to set htmlContent for consistency if we switch back
       }
-    }
+    };
+
+    processContent();
   }, [markdown, theme, isPresetTheme]);
 
   const handleCopy = async () => {
@@ -118,10 +172,8 @@ export function PreviewPane() {
       }
 
       if (isPresetTheme) {
-        // Generate WeChat compatible HTML
-        const rawHtml = md.render(markdown);
-        const themeHtml = applyTheme(rawHtml, theme);
-        contentToCopy = await makeWeChatCompatible(themeHtml, theme);
+        // Use the processed htmlContent which includes Mermaid images
+        contentToCopy = await makeWeChatCompatible(htmlContent, theme);
       } else {
         // For custom themes, we can't easily inline styles. 
         // Just copy the raw HTML from the container? 

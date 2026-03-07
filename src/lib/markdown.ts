@@ -19,8 +19,10 @@ export const md = new MarkdownIt({
         }
 
         const dots = '<div style="margin-bottom: 12px; white-space: nowrap;"><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ff5f56; margin-right: 6px;"></span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e; margin-right: 6px;"></span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #27c93f;"></span></div>';
-
-        return `<pre>${dots}<code class="hljs">${codeContent}</code></pre>`;
+        
+        // Preserve language class for non-hljs languages (like mermaid)
+        const langClass = lang ? `language-${lang}` : '';
+        return `<pre>${dots}<code class="hljs ${langClass}">${codeContent}</code></pre>`;
     }
 });
 
