@@ -90,6 +90,33 @@ export function PreviewPane() {
   const handleCopy = async () => {
     try {
       let contentToCopy = '';
+      let statsHtml = '';
+
+      // Generate Stats HTML if visible
+      if (isStatsVisible) {
+        // 使用内联样式确保兼容性，参考微信公众号排版风格
+        statsHtml = `
+          <section style="
+            margin: 20px 10px;
+            text-align: center;
+            font-size: 14px;
+            color: #888;
+            letter-spacing: 0.5px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          ">
+            <span style="
+              display: inline-block;
+              padding: 4px 12px;
+              background-color: #f7f7f7;
+              border-radius: 100px;
+              border: 1px solid #eee;
+            ">
+              字数 ${stats.count} <span style="margin: 0 4px; color: #ddd;">|</span> 约 ${stats.time} 分钟
+            </span>
+          </section>
+        `;
+      }
+
       if (isPresetTheme) {
         // Generate WeChat compatible HTML
         const rawHtml = md.render(markdown);
@@ -101,6 +128,11 @@ export function PreviewPane() {
         // Or warn user.
         toast.error("自定义主题暂不支持一键复制到微信（需内联样式支持）");
         return;
+      }
+
+      // Prepend stats if enabled
+      if (statsHtml) {
+        contentToCopy = statsHtml + contentToCopy;
       }
 
       const blob = new Blob([contentToCopy], { type: 'text/html' });
@@ -186,8 +218,11 @@ export function PreviewPane() {
           <>
             {/* Stats Banner */}
             {isStatsVisible && (
-              <div className="flex justify-center mb-6 mt-4 animate-in fade-in slide-in-from-top-2">
-                <div className="inline-flex items-center gap-3 px-3 py-1.5 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm border border-black/5 dark:border-white/5 text-[11px] font-medium text-muted-foreground select-none shadow-sm transition-all hover:bg-black/10 dark:hover:bg-white/15">
+              <div 
+                className="flex justify-center mb-6 mt-4 animate-in fade-in slide-in-from-top-2 select-none print:hidden"
+                title="此统计信息将会被复制到剪贴板"
+              >
+                <div className="inline-flex items-center gap-3 px-3 py-1.5 rounded-full bg-black/5 dark:bg-white/10 backdrop-blur-sm border border-black/5 dark:border-white/5 text-[11px] font-medium text-muted-foreground shadow-sm transition-all hover:bg-black/10 dark:hover:bg-white/15 cursor-help">
                    <span className="font-mono">字数 {stats.count}</span>
                    <span className="w-px h-3 bg-border/50" />
                    <span>约 {stats.time} 分钟</span>
