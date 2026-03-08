@@ -34,10 +34,10 @@ export function EditorPane() {
   const {
     markdown,
     setMarkdown,
-    setScrollPercentage,
     isScrollSyncEnabled,
     toggleScrollSync,
-    toggleStats
+    toggleStats,
+    registerEditorScroller
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -45,7 +45,10 @@ export function EditorPane() {
 
   React.useEffect(() => {
     setMounted(true);
-  }, []);
+    if (textareaRef.current) {
+      registerEditorScroller(textareaRef.current);
+    }
+  }, [registerEditorScroller]);
 
   const insertFormat = (prefix: string, suffix: string = '', placeholder: string = 'text') => {
     const textarea = textareaRef.current;
@@ -115,14 +118,6 @@ export function EditorPane() {
       unlisten.then(f => f());
     };
   }, []); // insertFormat is stable enough because it uses refs and setMarkdown (which is stable from zustand)
-
-  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    if (isScrollSyncEnabled === false) return;
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    if (scrollHeight <= clientHeight) return;
-    const percentage = scrollTop / (scrollHeight - clientHeight);
-    setScrollPercentage(percentage);
-  };
 
   const handleAutoFormat = () => {
     if (!markdown.trim()) {
@@ -311,16 +306,14 @@ export function EditorPane() {
         </div>
       </div>
 
-      <textarea
+      <Textarea
         ref={textareaRef}
         value={markdown}
         onChange={(e) => setMarkdown(e.target.value)}
-        onKeyDown={handleKeyDown}
         onPaste={onPaste}
-        onScroll={handleScroll}
-        className="flex-1 w-full resize-none bg-transparent p-8 md:p-10 outline-none font-mono text-[15px] md:text-[16px] leading-[1.8] no-scrollbar text-foreground placeholder-muted-foreground"
-        placeholder="在这里输入 Markdown 内容..."
-        spellCheck={false}
+        onKeyDown={handleKeyDown}
+        className="flex-1 min-h-0 resize-none p-8 font-mono text-base leading-relaxed border-0 focus-visible:ring-0 rounded-none bg-transparent"
+        placeholder="开始输入 Markdown..."
       />
 
       {/* Bottom Action / Info Bar for Editor */}

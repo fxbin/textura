@@ -9,10 +9,14 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { useScrollSync } from '@/hooks/useScrollSync';
 
 export default function Home() {
   // Use a shorter interval (e.g., 3 minutes) or the default 5 minutes
   useAutoSave(180000); // 3 minutes for peace of mind
+  
+  // Enable scroll synchronization
+  useScrollSync();
 
   return (
     <main className="h-screen w-screen flex flex-col overflow-hidden bg-background relative">

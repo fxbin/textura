@@ -31,7 +31,7 @@ import { renderMermaidSVG } from 'beautiful-mermaid';
 
 export function PreviewPane() {
   const {
-    markdown: storeMarkdown,
+    markdown,
     theme,
     fontSize,
     deviceModel,
@@ -41,13 +41,15 @@ export function PreviewPane() {
     setCustomSize,
     customThemeCss,
     savedThemes,
-    isStatsVisible
+    isStatsVisible,
+    isScrollSyncEnabled,
+    registerPreviewScroller
   } = useEditorStore();
   const [mounted, setMounted] = React.useState(false);
   const [htmlContent, setHtmlContent] = React.useState('');
 
   // 性能优化：使用 useDeferredValue 解耦高频输入导致的大开销重新渲染
-  const markdown = React.useDeferredValue(storeMarkdown);
+  const deferredMarkdown = React.useDeferredValue(markdown);
 
   React.useEffect(() => {
     setMounted(true);
@@ -62,7 +64,7 @@ export function PreviewPane() {
     const processContent = async () => {
       if (isPresetTheme) {
         // Use markdown-it + applyTheme for presets (WeChat compatible)
-        const rawHtml = md.render(markdown);
+        const rawHtml = md.render(deferredMarkdown);
         let styledHtml = applyTheme(rawHtml, theme);
 
         // Process Mermaid Diagrams
@@ -143,7 +145,7 @@ export function PreviewPane() {
                 img.onload = () => {
                   const canvas = document.createElement('canvas');
                   // Scale up for better quality (Retina)
-                  const scale = 2; 
+                  const scale = 2;
                   // Use dimensions from SVG parsing if img.width is unreliable (e.g. 0)
                   const finalWidth = img.width || dims.width;
                   const finalHeight = img.height || dims.height;
@@ -211,7 +213,7 @@ export function PreviewPane() {
     };
 
     processContent();
-  }, [markdown, theme, isPresetTheme]);
+  }, [deferredMarkdown, theme, isPresetTheme]);
 
   const handleCopy = async () => {
     try {
@@ -260,7 +262,7 @@ export function PreviewPane() {
       }
 
       const blob = new Blob([contentToCopy], { type: 'text/html' });
-      const textBlob = new Blob([markdown], { type: 'text/plain' });
+      const textBlob = new Blob([deferredMarkdown], { type: 'text/plain' });
 
       // Try using the Clipboard API
       try {
@@ -285,33 +287,23 @@ export function PreviewPane() {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
 
-  // Sync scroll from Editor
   React.useEffect(() => {
-    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
-      // Only sync if enabled
-      if (state.isScrollSyncEnabled === false) return;
-
-      if (state.scrollPercentage !== prevState.scrollPercentage) {
-        if (scrollRef.current) {
-          const el = scrollRef.current;
-          el.scrollTop = state.scrollPercentage * (el.scrollHeight - el.clientHeight);
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+    if (scrollRef.current) {
+      registerPreviewScroller(scrollRef.current);
+    }
+  }, [registerPreviewScroller]);
 
   const stats = React.useMemo(() => {
     // 移除空白字符进行纯字符统计
-    const cleanText = markdown.replace(/\s/g, '');
+    const cleanText = deferredMarkdown.replace(/\s/g, '');
     const charCount = cleanText.length;
     
     // 统计中文字符
-    const chineseChars = markdown.match(/[\u4e00-\u9fa5]/g) || [];
+    const chineseChars = deferredMarkdown.match(/[\u4e00-\u9fa5]/g) || [];
     const chineseCount = chineseChars.length;
     
     // 统计英文单词
-    const nonChineseText = markdown.replace(/[\u4e00-\u9fa5]/g, ' ');
+    const nonChineseText = deferredMarkdown.replace(/[\u4e00-\u9fa5]/g, ' ');
     const words = nonChineseText.trim().split(/\s+/).filter(w => w.length > 0);
     const wordCount = words.length;
     
@@ -323,11 +315,12 @@ export function PreviewPane() {
       count: charCount,
       time: readTime
     };
-  }, [markdown]);
+  }, [deferredMarkdown]);
 
   const renderContent = () => (
     <div
       id="print-area"
+      ref={scrollRef}
       className={cn(
         "flex-1 overflow-y-auto overflow-x-hidden no-scrollbar bg-white h-full",
         deviceModel === 'pc' ? "px-8 md:px-12 lg:px-16 py-8" : "px-0"

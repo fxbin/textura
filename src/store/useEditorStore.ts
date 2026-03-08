@@ -70,14 +70,16 @@ interface EditorState {
   isSettingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
 
-  // Transient state (not persisted typically, but okay here)
-  scrollPercentage: number;
-
+  // DOM Registry for Scroll Sync
+  editorRef: HTMLElement | null;
+  previewRef: HTMLElement | null;
+  registerEditorScroller: (ref: HTMLElement | null) => void;
+  registerPreviewScroller: (ref: HTMLElement | null) => void;
+  
   _hasHydrated: boolean;
-  setHasHydrated: (state: boolean) => void;
 
+  setHasHydrated: (state: boolean) => void;
   setMarkdown: (markdown: string) => void;
-  setScrollPercentage: (pct: number) => void;
   setTheme: (theme: ThemeId) => void;
   setFontSize: (size: number) => void;
   setDeviceModel: (model: DeviceModel) => void;
@@ -309,12 +311,15 @@ export const useEditorStore = create<EditorState>()(
           model: 'deepseek-chat',
         },
         isSettingsOpen: false,
-        scrollPercentage: 0,
+        editorRef: null,
+        previewRef: null,
         _hasHydrated: false,
+
+        registerEditorScroller: (ref) => set({ editorRef: ref }),
+        registerPreviewScroller: (ref) => set({ previewRef: ref }),
 
         setHasHydrated: (state) => set({ _hasHydrated: state }),
         setMarkdown: (markdown) => set({ markdown }),
-        setScrollPercentage: (scrollPercentage) => set({ scrollPercentage }),
         setTheme: (theme) => set({ theme }),
         setFontSize: (fontSize) => set({ fontSize }),
         setDeviceModel: (deviceModel) => set({ deviceModel }),
