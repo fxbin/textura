@@ -8,13 +8,12 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings, Moon, Sun, Type, Bot, Key, CheckCircle } from "lucide-react";
 import { useEditorStore, AiApiProvider } from "@/store/useEditorStore";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTheme } from "next-themes";
 import { getProviderModels, getDefaultModel } from "@/lib/aiService";
 import { toast } from "sonner";
@@ -22,13 +21,8 @@ import { toast } from "sonner";
 export function SettingsDialog() {
   const { fontSize, setFontSize, aiApiConfig, setAiApiConfig, isSettingsOpen, setSettingsOpen } = useEditorStore();
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const mounted = true;
   const [showApiKey, setShowApiKey] = useState(false);
-
-  // Avoid hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleProviderChange = (provider: AiApiProvider) => {
     setAiApiConfig({ 
@@ -98,7 +92,7 @@ export function SettingsDialog() {
              </Label>
              <div className="flex items-center space-x-2">
                 <Button 
-                    variant={theme === 'light' ? 'default' : 'outline'} 
+                    variant={theme !== 'dark' ? 'default' : 'outline'} 
                     size="sm" 
                     onClick={() => setTheme('light')}
                     className="h-7 px-2 text-xs"

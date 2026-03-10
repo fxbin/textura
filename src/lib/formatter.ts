@@ -6,7 +6,7 @@
 
 export function autoFormatMarkdown(text: string): string {
   let lines = text.split('\n');
-  let formattedLines: string[] = [];
+  const formattedLines: string[] = [];
   
   // 预处理：移除行首尾空格
   lines = lines.map(line => line.trim());

@@ -35,7 +35,7 @@ const ResizablePanel = React.forwardRef<
 >(({ className, ...props }, ref) => {
   return (
     <Panel
-      // @ts-ignore - Panel ref type mismatch workaround
+      // @ts-expect-error - Panel ref type mismatch workaround
       ref={ref}
       data-slot="resizable-panel"
       className={cn(

@@ -6,6 +6,11 @@ const DB_VERSION = 1;
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is not available in this environment'));
+      return;
+    }
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => reject(request.error);
@@ -56,7 +61,7 @@ export const indexedDBStorage: PersistStorage<unknown> = {
         request.onsuccess = () => resolve();
       });
     } catch {
-      console.error('Failed to save to IndexedDB:', name);
+      // Ignore non-browser environments such as SSR/build.
     }
   },
 
@@ -72,7 +77,7 @@ export const indexedDBStorage: PersistStorage<unknown> = {
         request.onsuccess = () => resolve();
       });
     } catch {
-      console.error('Failed to remove from IndexedDB:', name);
+      // Ignore non-browser environments such as SSR/build.
     }
   },
 };

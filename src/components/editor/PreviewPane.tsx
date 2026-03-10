@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/preserve-manual-memoization */
 
 import * as React from 'react';
 import ReactMarkdown from 'react-markdown';

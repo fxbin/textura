@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
-import { useHistoryStore, formatTimestamp } from '@/store/historyStore';
+import { formatTimestamp, useHistoryStore } from '@/store/historyStore';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,7 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { History, RotateCcw, Trash2, Clock } from 'lucide-react';
+import { Clock, History, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function HistoryDialog() {
@@ -22,26 +22,26 @@ export function HistoryDialog() {
   const { snapshots, addSnapshot, removeSnapshot, clearSnapshots } = useHistoryStore();
 
   const handleSaveSnapshot = () => {
-    addSnapshot(markdown, '手动保存');
-    toast.success('已保存当前快照');
+    addSnapshot(markdown, 'Manual Save');
+    toast.success('Snapshot saved');
   };
 
   const handleRestoreSnapshot = (content: string) => {
     setMarkdown(content);
     setOpen(false);
-    toast.success('已恢复历史版本');
+    toast.success('Version restored');
   };
 
-  const handleDeleteSnapshot = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteSnapshot = (id: string, event: React.MouseEvent) => {
+    event.stopPropagation();
     removeSnapshot(id);
-    toast.success('已删除快照');
+    toast.success('Snapshot deleted');
   };
 
   const handleClearHistory = () => {
-    if (window.confirm('确定要清空所有历史记录吗？此操作不可恢复。')) {
+    if (window.confirm('Clear all history snapshots? This action cannot be undone.')) {
       clearSnapshots();
-      toast.success('已清空历史记录');
+      toast.success('History cleared');
     }
   };
 
@@ -54,24 +54,24 @@ export function HistoryDialog() {
           className="h-8 px-2 text-xs gap-1.5 text-muted-foreground hover:text-primary"
         >
           <History className="w-3.5 h-3.5" />
-          历史
+          History
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[80vh] w-[95vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock className="w-5 h-5" />
-            版本历史
+            Version History
           </DialogTitle>
           <DialogDescription>
-            保存和恢复文档的历史版本
+            Save and restore document snapshots.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex gap-4 py-4">
           <div className="flex-1">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium">历史快照 ({snapshots.length})</h4>
+              <h4 className="text-sm font-medium">Snapshots ({snapshots.length})</h4>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -80,7 +80,7 @@ export function HistoryDialog() {
                   className="h-7 text-xs"
                 >
                   <RotateCcw className="w-3 h-3 mr-1" />
-                  保存当前
+                  Save Current
                 </Button>
                 {snapshots.length > 0 && (
                   <Button
@@ -90,7 +90,7 @@ export function HistoryDialog() {
                     className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-50"
                   >
                     <Trash2 className="w-3 h-3 mr-1" />
-                    清空
+                    Clear
                   </Button>
                 )}
               </div>
@@ -100,8 +100,8 @@ export function HistoryDialog() {
               {snapshots.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8">
                   <History className="w-12 h-12 mb-3 opacity-30" />
-                  <p className="text-sm">暂无历史记录</p>
-                  <p className="text-xs mt-1">点击"保存当前"保存快照</p>
+                  <p className="text-sm">No saved snapshots yet</p>
+                  <p className="text-xs mt-1">Click &quot;Save Current&quot; to create one</p>
                 </div>
               ) : (
                 <div className="p-2 space-y-2">
@@ -119,7 +119,7 @@ export function HistoryDialog() {
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => handleDeleteSnapshot(snapshot.id, e)}
+                          onClick={(event) => handleDeleteSnapshot(snapshot.id, event)}
                         >
                           <Trash2 className="w-3 h-3 text-red-500" />
                         </Button>

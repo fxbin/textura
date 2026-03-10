@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
 
-// Initialize once
 if (typeof window !== 'undefined') {
   mermaid.initialize({
     startOnLoad: false,
@@ -18,8 +17,7 @@ interface MermaidProps {
 }
 
 export const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [svg, setSvg] = useState<string>('');
+  const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,18 +25,19 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
 
     const renderChart = async () => {
       try {
-        const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
-        // mermaid.render returns { svg, bindFunctions } in newer versions
-        const { svg } = await mermaid.render(id, chart);
-        
-        if (mounted) {
-          setSvg(svg);
-          setError(null);
+        const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
+        const rendered = await mermaid.render(id, chart);
+
+        if (!mounted) {
+          return;
         }
-      } catch (err: any) {
+
+        setSvg(rendered.svg);
+        setError(null);
+      } catch (err: unknown) {
         console.error('Mermaid rendering failed:', err);
         if (mounted) {
-          setError(err.message || 'Syntax error in graph');
+          setError(err instanceof Error ? err.message : 'Syntax error in graph');
         }
       }
     };
@@ -63,7 +62,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
   }
 
   return (
-    <div 
+    <div
       className="mermaid my-6 flex justify-center overflow-x-auto"
       dangerouslySetInnerHTML={{ __html: svg }}
     />

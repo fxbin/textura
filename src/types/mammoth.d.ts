@@ -7,7 +7,7 @@ declare module 'mammoth' {
 
   export interface ConversionResult {
     value: string;
-    messages: any[];
+    messages: unknown[];
   }
 
   export function convertToMarkdown(options: MammothOptions): Promise<ConversionResult>;
