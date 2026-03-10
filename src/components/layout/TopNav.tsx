@@ -1,45 +1,43 @@
 'use client';
 
 import * as React from 'react';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import {
-  Download, Copy, PanelRightClose, PanelRightOpen,
-  FileText, ChevronDown, FolderOpen, Save, Check,
-  RotateCcw, Sparkles, Printer, FileCode, FileImage, File, Clock
-} from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import juice from 'juice';
-import { SettingsDialog } from './SettingsDialog';
-import { HistoryDialog } from './HistoryDialog';
-import { useEditorStore } from '@/store/useEditorStore';
-import { saveDocumentToFile, openDocumentFromFile } from '@/store/documentStore';
+import {
+  Check,
+  ChevronDown,
+  Clock,
+  Copy,
+  Download,
+  File,
+  FileCode,
+  FileText,
+  FolderOpen,
+  PanelRightOpen,
+  Printer,
+  RotateCcw,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
   DropdownMenuLabel,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { ThemeSelector } from '@/components/editor/ThemeSelector';
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { copyRichContent } from '@/lib/clipboard';
+import { makeWeChatCompatible } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
+import { ThemeSelector } from '@/components/editor/ThemeSelector';
+import { saveDocumentToFile, openDocumentFromFile } from '@/store/documentStore';
+import { useEditorStore } from '@/store/useEditorStore';
+import { SettingsDialog } from './SettingsDialog';
+import { HistoryDialog } from './HistoryDialog';
 
 export function TopNav() {
   const {
@@ -49,29 +47,41 @@ export function TopNav() {
     fontSize,
     setFontSize,
     markdown,
+    theme,
+    savedThemes,
+    customThemeCss,
     setMarkdown,
     isStatsVisible,
-    toggleStats
+    toggleStats,
   } = useEditorStore();
 
   const handleReset = () => {
-    if (window.confirm('确定要恢复默认示例内容吗？当前内容将被覆盖。')) {
-      resetMarkdown();
-      toast.success('已恢复默认示例');
+    if (!window.confirm('确定要恢复默认示例内容吗？当前内容将被覆盖。')) {
+      return;
     }
+
+    resetMarkdown();
+    toast.success('已恢复默认示例');
   };
 
   const handleLoadExample = (content: string, name: string) => {
-    if (window.confirm(`确定要加载示例“${name}”吗？当前内容将被覆盖。`)) {
-      setMarkdown(content);
-      toast.success(`已加载示例：${name}`);
+    if (!window.confirm(`确定要加载示例“${name}”吗？当前内容将被覆盖。`)) {
+      return;
     }
+
+    setMarkdown(content);
+    toast.success(`已加载示例：${name}`);
   };
 
   const handleSaveMarkdown = async () => {
     const result = await saveDocumentToFile(markdown, 'document.md');
     if (result.success) {
       toast.success('Markdown 文档已保存');
+      return;
+    }
+
+    if (result.error && result.error !== '已取消保存。') {
+      toast.error(result.error);
     }
   };
 
@@ -83,20 +93,18 @@ export function TopNav() {
         return;
       }
 
-      const clone = previewElement.cloneNode(true) as HTMLElement;
-      const htmlContent = clone.innerHTML;
-
+      const htmlContent = (previewElement as HTMLElement).cloneNode(true) as HTMLElement;
       const styleTags = document.querySelectorAll('style');
       let css = '';
-      styleTags.forEach(tag => {
+      styleTags.forEach((tag) => {
         css += tag.innerHTML;
       });
 
-      const inlinedHtml = juice(htmlContent, {
+      const inlinedHtml = juice(htmlContent.innerHTML, {
         extraCss: css,
         applyStyleTags: true,
         removeStyleTags: false,
-        preserveImportant: true
+        preserveImportant: true,
       });
 
       const fullHtml = `<!DOCTYPE html>
@@ -110,23 +118,21 @@ export function TopNav() {
     img { max-width: 100%; height: auto; }
   </style>
 </head>
-<body>
-  ${inlinedHtml}
-</body>
+<body>${inlinedHtml}</body>
 </html>`;
 
       const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `textura-export-${new Date().toISOString().split('T')[0]}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `textura-export-${new Date().toISOString().split('T')[0]}.html`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
       toast.success('HTML 已导出');
-    } catch (e) {
-      console.error('Export HTML failed:', e);
+    } catch (error) {
+      console.error('Export HTML failed:', error);
       toast.error('导出 HTML 失败');
     }
   };
@@ -248,6 +254,7 @@ export function TopNav() {
 
       await new Promise<void>((resolve) => {
         let settled = false;
+
         const cleanup = () => {
           if (settled) {
             return;
@@ -267,10 +274,19 @@ export function TopNav() {
         frameWindow.focus();
         frameWindow.print();
       });
-    } catch (err: unknown) {
-      console.error('Print export failed:', err);
+    } catch (error) {
+      console.error('Print export failed:', error);
       toast.dismiss('pdf-export');
-      toast.error('打开打印窗口失败');
+
+      const fallbackWindow = window.open('', '_blank', 'noopener,noreferrer');
+      if (fallbackWindow) {
+        fallbackWindow.document.write(buildPdfExportMarkup(element));
+        fallbackWindow.document.close();
+        toast.error('系统打印被拦截，已在新标签页打开可打印内容。');
+      } else {
+        toast.error('打开打印窗口失败');
+      }
+
       if (iframe.parentNode) {
         document.body.removeChild(iframe);
       }
@@ -281,7 +297,45 @@ export function TopNav() {
     const result = await openDocumentFromFile();
     if (result.success && result.content !== undefined) {
       setMarkdown(result.content);
-      toast.success(`已打开: ${result.name}`);
+      toast.success(`已打开：${result.name}`);
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
+      return;
+    }
+
+    if (result.error && result.error !== '已取消打开文件。') {
+      toast.error(result.error);
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      const previewElement = document.getElementById('print-area');
+      if (!previewElement) {
+        toast.error('未找到预览内容');
+        return;
+      }
+
+      const presetTheme = theme !== 'custom' && !savedThemes.some((item) => item.id === theme);
+      const html = presetTheme
+        ? await makeWeChatCompatible(previewElement.innerHTML, theme)
+        : `<style>${customThemeCss}</style>${previewElement.innerHTML}`;
+
+      const result = await copyRichContent(html, markdown);
+      if (!result.ok) {
+        toast.error('复制失败，请检查浏览器剪贴板权限');
+        return;
+      }
+
+      if (presetTheme) {
+        toast.success('已复制到剪贴板，请直接粘贴到公众号后台');
+      } else {
+        toast.warning('已复制当前预览 HTML。自定义主题在微信中可能丢失样式。');
+      }
+    } catch (error) {
+      console.error('Copy failed:', error);
+      toast.error('复制失败，请重试');
     }
   };
 
@@ -293,80 +347,16 @@ export function TopNav() {
     { size: 18, label: '更大' },
   ];
 
-  const handleCopy = () => {
-    try {
-      const previewElement = document.querySelector('.heti');
-      if (!previewElement) {
-        toast.error('未找到预览内容');
-        return;
-      }
-
-      const htmlContent = previewElement.outerHTML;
-      const styleTag = previewElement.parentElement?.querySelector('style');
-      const css = styleTag ? styleTag.innerHTML : '';
-
-      const inlinedHtml = juice(htmlContent, {
-        extraCss: css,
-        applyStyleTags: true,
-        removeStyleTags: true,
-        preserveImportant: true
-      });
-
-      const blob = new Blob([inlinedHtml], { type: 'text/html' });
-      const plainText = new Blob([previewElement.textContent || ''], { type: 'text/plain' });
-
-      const item = new ClipboardItem({
-        'text/html': blob,
-        'text/plain': plainText
-      });
-
-      navigator.clipboard.write([item]).then(() => {
-        toast.success('已复制到剪贴板，请直接粘贴到公众号后台');
-      }).catch((err) => {
-        console.error('Clipboard write failed:', err);
-        legacyCopy(inlinedHtml);
-      });
-
-    } catch (e) {
-      console.error('Copy failed:', e);
-      toast.error('复制失败，请重试');
-    }
-  };
-
-  const legacyCopy = (html: string) => {
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-    tempDiv.style.position = 'fixed';
-    tempDiv.style.left = '-9999px';
-    document.body.appendChild(tempDiv);
-
-    const range = document.createRange();
-    range.selectNode(tempDiv);
-    const selection = window.getSelection();
-    if (selection) {
-      selection.removeAllRanges();
-      selection.addRange(range);
-      try {
-        document.execCommand('copy');
-        toast.success('已复制到剪贴板 (Legacy Mode)');
-      } catch (e) {
-        toast.error('复制失败');
-      }
-      selection.removeAllRanges();
-    }
-    document.body.removeChild(tempDiv);
-  }
-
   return (
-    <header className="h-14 border-b border-border/40 bg-background/80 backdrop-blur-xl flex items-center px-4 justify-between flex-none z-50 sticky top-0 w-full shrink-0 transition-all duration-300">
-      <div className="flex items-center gap-3 select-none">
-        <div className="flex items-center gap-2 group cursor-pointer transition-opacity hover:opacity-80">
-          <div className="w-8 h-8 flex items-center justify-center overflow-hidden rounded-md">
+    <header className="sticky top-0 z-50 flex h-14 w-full shrink-0 items-center justify-between border-b border-border/40 bg-background/80 px-4 backdrop-blur-xl transition-all duration-300">
+      <div className="flex select-none items-center gap-3">
+        <div className="group flex cursor-pointer items-center gap-2 transition-opacity hover:opacity-80">
+          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
             <Image src="/logo.png" alt="Textura Logo" width={32} height={32} className="object-cover" />
           </div>
           <div className="flex flex-col justify-center">
-            <span className="font-bold text-sm tracking-tight text-foreground/90">Textura</span>
-            <span className="text-[10px] text-muted-foreground font-medium">禅模式排版</span>
+            <span className="text-sm font-bold tracking-tight text-foreground/90">Textura</span>
+            <span className="text-[10px] font-medium text-muted-foreground">禅模式排版</span>
           </div>
         </div>
       </div>
@@ -374,10 +364,10 @@ export function TopNav() {
       <div className="flex items-center gap-1.5 md:gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground hover:text-foreground hidden md:flex">
-              <FileText className="w-4 h-4" />
+            <Button variant="ghost" size="sm" className="hidden h-8 gap-1.5 text-muted-foreground hover:text-foreground md:flex">
+              <FileText className="h-4 w-4" />
               <span className="text-xs font-medium">示例</span>
-              <ChevronDown className="w-3 h-3 opacity-50" />
+              <ChevronDown className="h-3 w-3 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -395,19 +385,19 @@ export function TopNav() {
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleReset} className="text-destructive focus:text-destructive">
-              <RotateCcw className="w-4 h-4 mr-2" />
+              <RotateCcw className="mr-2 h-4 w-4" />
               恢复默认
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Separator orientation="vertical" className="h-4 hidden md:block" />
+        <Separator orientation="vertical" className="hidden h-4 md:block" />
 
-        <div className="flex items-center gap-0.5 bg-secondary/50 p-1 rounded-lg border border-border/50">
+        <div className="flex items-center gap-0.5 rounded-lg border border-border/50 bg-secondary/50 p-1">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleReset}>
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>恢复默认示例</TooltipContent>
@@ -416,7 +406,7 @@ export function TopNav() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleOpen}>
-                <FolderOpen className="w-3.5 h-3.5" />
+                <FolderOpen className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>打开文件</TooltipContent>
@@ -425,38 +415,38 @@ export function TopNav() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                <Download className="w-3.5 h-3.5" />
+                <Download className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuLabel>导出与保存</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSaveMarkdown}>
-                <File className="w-4 h-4 mr-2 text-muted-foreground" />
+                <File className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>保存 Markdown</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleExportHtml}>
-                <FileCode className="w-4 h-4 mr-2 text-muted-foreground" />
+                <FileCode className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>导出 HTML</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleExportPdf}>
-                <Printer className="w-4 h-4 mr-2 text-muted-foreground" />
+                <Printer className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>打印 / 导出 PDF</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={toggleStats}>
-                <Clock className="w-4 h-4 mr-2 text-muted-foreground" />
+                <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>{isStatsVisible ? '隐藏字数统计' : '显示字数统计'}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        <Separator orientation="vertical" className="h-6 mx-1 bg-border/40" />
+        <Separator orientation="vertical" className="mx-1 h-6 bg-border/40" />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 font-medium text-xs text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-colors">
+            <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/80 hover:text-foreground">
               <span>{fontSize}px</span>
               <ChevronDown className="h-3 w-3 opacity-50" />
             </Button>
@@ -485,33 +475,29 @@ export function TopNav() {
 
         <Sheet open={isSidebarOpen} onOpenChange={toggleSidebar}>
           <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1.5"
-            >
-              <PanelRightOpen className="w-4 h-4" />
+            <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground">
+              <PanelRightOpen className="h-4 w-4" />
               <span className="text-xs font-medium">样式模板</span>
             </Button>
           </SheetTrigger>
-          <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col bg-background border-l">
-             <SheetHeader className="px-6 py-4 border-b shrink-0">
-               <SheetTitle className="text-base font-medium">选择排版样式</SheetTitle>
-             </SheetHeader>
-             <div className="flex-1 overflow-hidden">
-               <ThemeSelector />
-             </div>
+          <SheetContent className="flex w-[400px] flex-col border-l bg-background p-0 sm:w-[540px]">
+            <SheetHeader className="shrink-0 border-b px-6 py-4">
+              <SheetTitle className="text-base font-medium">选择排版样式</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-hidden">
+              <ThemeSelector />
+            </div>
           </SheetContent>
         </Sheet>
 
-        <Separator orientation="vertical" className="h-6 mx-1 bg-border/40" />
+        <Separator orientation="vertical" className="mx-1 h-6 bg-border/40" />
 
         <Button
           onClick={handleCopy}
           size="sm"
-          className="h-8 px-4 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all active:scale-95 font-medium text-xs gap-1.5 rounded-md"
+          className="h-8 gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95"
         >
-          <Copy className="w-3.5 h-3.5" />
+          <Copy className="h-3.5 w-3.5" />
           复制
         </Button>
       </div>
