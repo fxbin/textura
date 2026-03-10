@@ -52,6 +52,8 @@ export function SettingsDialog() {
     toggleScrollSync,
     isStatsVisible,
     toggleStats,
+    isHetiEnabled,
+    toggleHeti,
     theme,
     savedThemes,
   } = useEditorStore();
@@ -165,6 +167,14 @@ export function SettingsDialog() {
                       <p className="text-xs text-muted-foreground">预览中显示字数和阅读时间。</p>
                     </div>
                     <Switch checked={isStatsVisible} onCheckedChange={toggleStats} />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-1">
+                      <Label>Heti 排版优化</Label>
+                      <p className="text-xs text-muted-foreground">启用中西文混排间距优化（仅预设主题）。</p>
+                    </div>
+                    <Switch checked={isHetiEnabled} onCheckedChange={toggleHeti} />
                   </div>
                 </div>
               </CardContent>

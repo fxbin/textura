@@ -42,6 +42,7 @@ export function PreviewPane() {
     setCustomSize,
     customThemeCss,
     isStatsVisible,
+    isHetiEnabled,
     registerPreviewScroller,
   } = useEditorStore();
   const [mounted, setMounted] = React.useState(false);
@@ -194,10 +195,13 @@ export function PreviewPane() {
             )}
 
             {isPresetTheme ? (
+              // WeChat Mode: Raw HTML with inline styles
               <div
+                className={cn(isHetiEnabled && 'heti')}
                 dangerouslySetInnerHTML={{ __html: htmlContent }}
                 style={{
                   fontSize: `${fontSize}px`,
+                  // Styles are already inlined by applyTheme, but container padding/etc comes from theme logic
                 }}
               />
             ) : (
