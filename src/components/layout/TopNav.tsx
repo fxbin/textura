@@ -28,7 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { copyRichContent } from '@/lib/clipboard';
 import { makeWeChatCompatible } from '@/lib/wechatCompat';
@@ -645,6 +645,9 @@ export function TopNav() {
           <SheetContent className="flex w-[400px] flex-col border-l bg-background p-0 sm:w-[540px]">
             <SheetHeader className="shrink-0 border-b px-6 py-4">
               <SheetTitle className="text-base font-medium">选择排版样式</SheetTitle>
+              <SheetDescription className="sr-only">
+                切换预设主题或编辑自定义样式，并在预览区即时查看排版效果。
+              </SheetDescription>
             </SheetHeader>
             <div className="flex-1 overflow-hidden">
               <ThemeSelector />
