@@ -2,8 +2,8 @@
 
 import * as React from 'react';
 import Image from 'next/image';
-import { toast } from 'sonner';
 import juice from 'juice';
+import { toast } from 'sonner';
 import {
   Check,
   ChevronDown,
@@ -34,10 +34,42 @@ import { copyRichContent } from '@/lib/clipboard';
 import { makeWeChatCompatible } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
 import { ThemeSelector } from '@/components/editor/ThemeSelector';
-import { saveDocumentToFile, openDocumentFromFile } from '@/store/documentStore';
+import {
+  isTauriRuntime,
+  openDocumentFromFile,
+  openRecentDocument,
+  saveDocumentToFile,
+  useDocumentStore,
+} from '@/store/documentStore';
 import { useEditorStore } from '@/store/useEditorStore';
 import { SettingsDialog } from './SettingsDialog';
 import { HistoryDialog } from './HistoryDialog';
+
+function formatDocumentMeta(currentPath?: string, source?: string, lastSavedAt?: number) {
+  if (currentPath) {
+    return currentPath;
+  }
+
+  if (lastSavedAt) {
+    return `上次保存：${new Date(lastSavedAt).toLocaleString('zh-CN', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }
+
+  switch (source) {
+    case 'example':
+      return '示例文档';
+    case 'recovery':
+      return '恢复草稿';
+    case 'file':
+      return '本地文件';
+    default:
+      return '本地草稿';
+  }
+}
 
 export function TopNav() {
   const {
@@ -54,34 +86,83 @@ export function TopNav() {
     isStatsVisible,
     toggleStats,
   } = useEditorStore();
+  const currentDocument = useDocumentStore((state) => state.currentDocument);
+  const recentDocuments = useDocumentStore((state) => state.recentDocuments);
+  const isDirty = useDocumentStore((state) => state.isDirty);
+  const openDocumentSession = useDocumentStore((state) => state.openDocumentSession);
+  const markCurrentDocumentSaved = useDocumentStore((state) => state.markCurrentDocumentSaved);
+  const tauriRuntime = React.useMemo(() => isTauriRuntime(), []);
+
+  const currentDocumentName = currentDocument?.name || '未命名文档.md';
+  const currentDocumentMeta = formatDocumentMeta(currentDocument?.path, currentDocument?.source, currentDocument?.lastSavedAt);
+  const canDirectSave = tauriRuntime && Boolean(currentDocument?.path);
+  const recentEntries = recentDocuments.filter((item) => item.id !== currentDocument?.id).slice(0, 6);
+
+  const confirmDiscardChanges = React.useCallback(
+    (actionLabel: string) => {
+      if (!isDirty) {
+        return true;
+      }
+
+      return window.confirm(`当前文档“${currentDocumentName}”还有未保存修改，仍要${actionLabel}吗？`);
+    },
+    [currentDocumentName, isDirty]
+  );
 
   const handleReset = () => {
-    if (!window.confirm('确定要恢复默认示例内容吗？当前内容将被覆盖。')) {
+    if (!confirmDiscardChanges('恢复默认示例')) {
       return;
     }
 
     resetMarkdown();
+    const content = useEditorStore.getState().markdown;
+    openDocumentSession({
+      name: '默认示例.md',
+      content,
+      source: 'example',
+    });
     toast.success('已恢复默认示例');
   };
 
   const handleLoadExample = (content: string, name: string) => {
-    if (!window.confirm(`确定要加载示例“${name}”吗？当前内容将被覆盖。`)) {
+    if (!confirmDiscardChanges(`加载示例“${name}”`)) {
       return;
     }
 
     setMarkdown(content);
+    openDocumentSession({
+      name: `${name}.md`,
+      content,
+      source: 'example',
+    });
     toast.success(`已加载示例：${name}`);
   };
 
-  const handleSaveMarkdown = async () => {
-    const result = await saveDocumentToFile(markdown, 'document.md');
-    if (result.success) {
-      toast.success('Markdown 文档已保存');
+  const handleSaveMarkdown = async (forceDialog = false) => {
+    const result = await saveDocumentToFile(markdown, {
+      defaultName: currentDocumentName,
+      path: currentDocument?.path,
+      forceDialog,
+    });
+
+    if (!result.success) {
+      if (result.error && result.error !== '已取消保存。') {
+        toast.error(result.error);
+      }
       return;
     }
 
-    if (result.error && result.error !== '已取消保存。') {
-      toast.error(result.error);
+    markCurrentDocumentSaved({
+      content: markdown,
+      name: result.name || currentDocumentName,
+      path: result.path ?? currentDocument?.path,
+      lastSavedAt: result.savedAt,
+    });
+
+    if (tauriRuntime) {
+      toast.success(forceDialog || !currentDocument?.path ? '已另存为 Markdown 文件' : '已保存当前文档');
+    } else {
+      toast.success('已下载 Markdown 文件');
     }
   };
 
@@ -254,7 +335,6 @@ export function TopNav() {
 
       await new Promise<void>((resolve) => {
         let settled = false;
-
         const cleanup = () => {
           if (settled) {
             return;
@@ -294,9 +374,19 @@ export function TopNav() {
   };
 
   const handleOpen = async () => {
+    if (!confirmDiscardChanges('打开新文件')) {
+      return;
+    }
+
     const result = await openDocumentFromFile();
     if (result.success && result.content !== undefined) {
       setMarkdown(result.content);
+      openDocumentSession({
+        name: result.name || '导入文档.md',
+        content: result.content,
+        path: result.path,
+        source: result.path ? 'file' : 'untitled',
+      });
       toast.success(`已打开：${result.name}`);
       if (result.warning) {
         toast.warning(result.warning);
@@ -307,6 +397,35 @@ export function TopNav() {
     if (result.error && result.error !== '已取消打开文件。') {
       toast.error(result.error);
     }
+  };
+
+  const handleOpenRecent = async (documentId: string) => {
+    if (!confirmDiscardChanges('打开最近文档')) {
+      return;
+    }
+
+    const target = recentDocuments.find((item) => item.id === documentId);
+    if (!target) {
+      toast.error('未找到对应的最近文档记录');
+      return;
+    }
+
+    const result = await openRecentDocument(target);
+    if (result.success && result.content !== undefined) {
+      setMarkdown(result.content);
+      openDocumentSession({
+        id: target.id,
+        name: result.name || target.name,
+        content: result.content,
+        path: result.path ?? target.path,
+        source: target.source,
+        lastSavedAt: target.lastSavedAt,
+      });
+      toast.success(`已打开最近文档：${target.name}`);
+      return;
+    }
+
+    toast.error(result.error || '打开最近文档失败');
   };
 
   const handleCopy = async () => {
@@ -349,15 +468,29 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-50 flex h-14 w-full shrink-0 items-center justify-between border-b border-border/40 bg-background/80 px-4 backdrop-blur-xl transition-all duration-300">
-      <div className="flex select-none items-center gap-3">
-        <div className="group flex cursor-pointer items-center gap-2 transition-opacity hover:opacity-80">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="group flex shrink-0 cursor-pointer items-center gap-2 transition-opacity hover:opacity-80">
           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
             <Image src="/logo.png" alt="Textura Logo" width={32} height={32} className="object-cover" />
           </div>
           <div className="flex flex-col justify-center">
             <span className="text-sm font-bold tracking-tight text-foreground/90">Textura</span>
-            <span className="text-[10px] font-medium text-muted-foreground">禅模式排版</span>
+            <span className="text-[10px] font-medium text-muted-foreground">Typesetting Studio</span>
           </div>
+        </div>
+
+        <div className="hidden min-w-0 border-l pl-3 md:flex md:flex-col">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{currentDocumentName}</span>
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                isDirty ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              }`}
+            >
+              {isDirty ? '未保存' : '已保存'}
+            </span>
+          </div>
+          <span className="truncate text-[11px] text-muted-foreground">{currentDocumentMeta}</span>
         </div>
       </div>
 
@@ -403,14 +536,32 @@ export function TopNav() {
             <TooltipContent>恢复默认示例</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleOpen}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
                 <FolderOpen className="h-3.5 w-3.5" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>打开文件</TooltipContent>
-          </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuLabel>文档</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleOpen}>打开本地文件</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs text-muted-foreground">最近文档</DropdownMenuLabel>
+              {recentEntries.length === 0 ? (
+                <DropdownMenuItem disabled>暂无最近文档</DropdownMenuItem>
+              ) : (
+                recentEntries.map((item) => (
+                  <DropdownMenuItem key={item.id} onClick={() => handleOpenRecent(item.id)} className="flex flex-col items-start gap-0.5 py-2">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.path || formatDocumentMeta(undefined, item.source, item.lastSavedAt)}
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -418,13 +569,18 @@ export function TopNav() {
                 <Download className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>导出与保存</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSaveMarkdown}>
+              <DropdownMenuItem onClick={() => handleSaveMarkdown(false)}>
                 <File className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>保存 Markdown</span>
+                <span>{tauriRuntime ? '保存 Markdown' : '下载 Markdown'}</span>
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleSaveMarkdown(true)}>
+                <File className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>{tauriRuntime ? '另存为…' : '下载副本'}</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleExportHtml}>
                 <FileCode className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>导出 HTML</span>
@@ -438,6 +594,12 @@ export function TopNav() {
                 <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>{isStatsVisible ? '隐藏字数统计' : '显示字数统计'}</span>
               </DropdownMenuItem>
+              {canDirectSave && <DropdownMenuSeparator />}
+              {canDirectSave && (
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  当前文件：{currentDocument?.path}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -458,7 +620,7 @@ export function TopNav() {
               <DropdownMenuItem
                 key={item.size}
                 onClick={() => setFontSize(item.size)}
-                className="justify-between text-xs cursor-pointer"
+                className="cursor-pointer justify-between text-xs"
               >
                 <span className="flex items-center gap-2">
                   <span className="font-mono">{item.size}px</span>

@@ -10,11 +10,13 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { useDocumentWorkflow } from '@/hooks/useDocumentWorkflow';
 import { useScrollSync } from '@/hooks/useScrollSync';
 
 export default function Home() {
   // Use a shorter interval (e.g., 3 minutes) or the default 5 minutes
   useAutoSave(180000); // 3 minutes for peace of mind
+  useDocumentWorkflow();
   
   // Enable scroll synchronization
   useScrollSync();
