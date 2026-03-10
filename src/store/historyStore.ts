@@ -6,16 +6,16 @@ export interface DocumentSnapshot {
   content: string;
   timestamp: number;
   label?: string;
+  documentId?: string | null;
 }
 
 interface HistoryState {
   snapshots: DocumentSnapshot[];
   maxSnapshots: number;
-
-  addSnapshot: (content: string, label?: string) => void;
+  addSnapshot: (content: string, label?: string, documentId?: string | null) => void;
   removeSnapshot: (id: string) => void;
-  clearSnapshots: () => void;
-  getSnapshots: () => DocumentSnapshot[];
+  clearSnapshots: (documentId?: string | null) => void;
+  getSnapshots: (documentId?: string | null) => DocumentSnapshot[];
 }
 
 export const useHistoryStore = create<HistoryState>()(
@@ -24,30 +24,44 @@ export const useHistoryStore = create<HistoryState>()(
       snapshots: [],
       maxSnapshots: 50,
 
-      addSnapshot: (content: string, label?: string) => set((state) => {
-        const newSnapshot: DocumentSnapshot = {
-          id: `snap_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          content,
-          timestamp: Date.now(),
-          label,
-        };
+      addSnapshot: (content, label, documentId) =>
+        set((state) => {
+          const newSnapshot: DocumentSnapshot = {
+            id: `snap_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            content,
+            timestamp: Date.now(),
+            label,
+            documentId,
+          };
 
-        const updatedSnapshots = [newSnapshot, ...state.snapshots];
+          const updatedSnapshots = [newSnapshot, ...state.snapshots];
+          if (updatedSnapshots.length > state.maxSnapshots) {
+            updatedSnapshots.pop();
+          }
 
-        if (updatedSnapshots.length > state.maxSnapshots) {
-          updatedSnapshots.pop();
+          return { snapshots: updatedSnapshots };
+        }),
+
+      removeSnapshot: (id) =>
+        set((state) => ({
+          snapshots: state.snapshots.filter((snapshot) => snapshot.id !== id),
+        })),
+
+      clearSnapshots: (documentId) =>
+        set((state) => ({
+          snapshots:
+            documentId === undefined
+              ? []
+              : state.snapshots.filter((snapshot) => snapshot.documentId !== documentId),
+        })),
+
+      getSnapshots: (documentId) => {
+        if (documentId === undefined) {
+          return get().snapshots;
         }
 
-        return { snapshots: updatedSnapshots };
-      }),
-
-      removeSnapshot: (id: string) => set((state) => ({
-        snapshots: state.snapshots.filter((s) => s.id !== id),
-      })),
-
-      clearSnapshots: () => set({ snapshots: [] }),
-
-      getSnapshots: () => get().snapshots,
+        return get().snapshots.filter((snapshot) => snapshot.documentId === documentId);
+      },
     }),
     {
       name: 'textura-history',
@@ -69,18 +83,24 @@ export function formatTimestamp(timestamp: number): string {
 
   if (diffMins < 1) {
     return '刚刚';
-  } else if (diffMins < 60) {
-    return `${diffMins} 分钟前`;
-  } else if (diffHours < 24) {
-    return `${diffHours} 小时前`;
-  } else if (diffDays < 7) {
-    return `${diffDays} 天前`;
-  } else {
-    return date.toLocaleDateString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   }
+
+  if (diffMins < 60) {
+    return `${diffMins} 分钟前`;
+  }
+
+  if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  }
+
+  if (diffDays < 7) {
+    return `${diffDays} 天前`;
+  }
+
+  return date.toLocaleDateString('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

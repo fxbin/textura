@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
+import { useDocumentStore } from '@/store/documentStore';
 import { useHistoryStore } from '@/store/historyStore';
 
 const RECOVERY_KEY = 'textura-recovery-draft';
@@ -7,6 +8,8 @@ const RECOVERY_KEY = 'textura-recovery-draft';
 export interface RecoveryDraft {
   markdown: string;
   timestamp: number;
+  documentId?: string;
+  documentName?: string;
 }
 
 function readRecoveryDraft(): RecoveryDraft | null {
@@ -48,6 +51,8 @@ export function useDraftRecovery() {
   const markdown = useEditorStore((state) => state.markdown);
   const setMarkdown = useEditorStore((state) => state.setMarkdown);
   const hasHydrated = useEditorStore((state) => state._hasHydrated);
+  const currentDocument = useDocumentStore((state) => state.currentDocument);
+  const openDocumentSession = useDocumentStore((state) => state.openDocumentSession);
   const [draft, setDraft] = React.useState<RecoveryDraft | null>(null);
 
   React.useEffect(() => {
@@ -56,12 +61,17 @@ export function useDraftRecovery() {
     }
 
     const storedDraft = readRecoveryDraft();
-    if (!storedDraft || storedDraft.markdown === markdown) {
+    if (!storedDraft) {
+      return;
+    }
+
+    const sameDocument = storedDraft.documentId && storedDraft.documentId === currentDocument?.id;
+    if (sameDocument && storedDraft.markdown === markdown) {
       return;
     }
 
     setDraft(storedDraft);
-  }, [hasHydrated, markdown]);
+  }, [currentDocument?.id, hasHydrated, markdown]);
 
   React.useEffect(() => {
     if (!hasHydrated) {
@@ -77,27 +87,37 @@ export function useDraftRecovery() {
       writeRecoveryDraft({
         markdown,
         timestamp: Date.now(),
+        documentId: currentDocument?.id,
+        documentName: currentDocument?.name,
       });
     }, 1200);
 
     return () => window.clearTimeout(timer);
-  }, [hasHydrated, markdown]);
+  }, [currentDocument?.id, currentDocument?.name, hasHydrated, markdown]);
 
   const restoreDraft = React.useCallback(() => {
     if (!draft) {
       return;
     }
 
+    const currentDocumentId = useDocumentStore.getState().currentDocument?.id;
     const historyStore = useHistoryStore.getState();
-    historyStore.addSnapshot(markdown, '恢复前备份');
+
+    historyStore.addSnapshot(markdown, '恢复前备份', currentDocumentId);
+    openDocumentSession({
+      id: draft.documentId,
+      name: draft.documentName || '恢复草稿.md',
+      content: draft.markdown,
+      source: 'recovery',
+    });
     setMarkdown(draft.markdown);
-    historyStore.addSnapshot(draft.markdown, '异常恢复');
+    historyStore.addSnapshot(draft.markdown, '异常恢复', draft.documentId || currentDocumentId);
     writeRecoveryDraft({
-      markdown: draft.markdown,
+      ...draft,
       timestamp: Date.now(),
     });
     setDraft(null);
-  }, [draft, markdown, setMarkdown]);
+  }, [draft, markdown, openDocumentSession, setMarkdown]);
 
   const dismissDraft = React.useCallback(() => {
     writeRecoveryDraft(null);
