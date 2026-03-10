@@ -427,13 +427,13 @@ export function PreviewPane() {
               <SelectItem value="iphone-15-pro-max">
                 <div className="flex items-center">
                   <Smartphone className="mr-2 h-3 w-3" />
-                  iPhone 15 Pro
+                  iPhone 15 Pro Max
                 </div>
               </SelectItem>
               <SelectItem value="android-flagship">
                 <div className="flex items-center">
                   <Smartphone className="mr-2 h-3 w-3" />
-                  Android
+                  Android 水滴屏
                 </div>
               </SelectItem>
               <SelectItem value="custom">
@@ -476,7 +476,7 @@ export function PreviewPane() {
               {renderContent()}
             </div>
           ) : (
-            <DeviceFrame device="mobile">{renderContent()}</DeviceFrame>
+            <DeviceFrame device={deviceModel}>{renderContent()}</DeviceFrame>
           )}
         </div>
       </div>

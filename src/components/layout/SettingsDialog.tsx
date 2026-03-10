@@ -29,7 +29,7 @@ function getDeviceLabel(deviceModel: string) {
     case 'iphone-15-pro-max':
       return 'iPhone 15 Pro Max';
     case 'android-flagship':
-      return 'Android';
+      return 'Android 水滴屏';
     case 'custom':
       return '自定义尺寸';
     default:
