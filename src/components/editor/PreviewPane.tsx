@@ -327,7 +327,10 @@ export function PreviewPane() {
                     rehypePlugins={[rehypeRaw, rehypeHighlight]}
                     remarkPlugins={[remarkGfm, remarkBreaks]}
                     components={{
-                      img: ({ ...props }) => <img alt="" className="my-4 w-full rounded-lg shadow-sm" {...props} />,
+                      img: ({ ...props }) => {
+                        // eslint-disable-next-line @next/next/no-img-element
+                        return <img alt="" className="my-4 w-full rounded-lg shadow-sm" {...props} />;
+                      },
                       code: ({ inline, className, children, ...props }: any) => {
                         const match = /language-(\w+)/.exec(className || '');
                         const isMermaid = match && match[1] === 'mermaid';

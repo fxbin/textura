@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
-import { THEMES, THEME_GROUPS } from '@/lib/themes/index';
+import { THEME_GROUPS } from '@/lib/themes/index';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Check, Trash2, Save, X } from 'lucide-react';
@@ -18,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import DOMPurify from 'dompurify';
 
 export function ThemeSelector() {
   const {
@@ -118,7 +117,7 @@ export function ThemeSelector() {
           const propMatch = content.match(propRegex);
           if (propMatch) return propMatch[1].trim();
         }
-      } catch (e) { return null; }
+      } catch { return null; }
       return null;
     };
 
@@ -142,12 +141,6 @@ export function ThemeSelector() {
     const textColor = extractStyle(styles.p || '', 'color') || '#333';
     const h1Color = extractStyle(styles.h1 || '', 'color') || textColor;
     const accentColor = extractStyle(styles.a || styles.blockquote || '', 'color') || h1Color;
-    const borderColor = extractStyle(styles.container || '', 'border-color') || 'transparent';
-
-    // Check if it's a dark theme based on background brightness
-    // Simple heuristic: if bg is dark, use light borders for contrast
-    const isDark = bg.match(/#([0-9a-f]{3}){1,2}/i) ?
-      (parseInt(bg.replace('#', ''), 16) > 0xffffff / 2 ? false : true) : false;
 
     return (
       <div className="w-full h-full flex flex-col p-3 gap-2" style={{ backgroundColor: bg }}>

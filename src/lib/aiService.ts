@@ -70,26 +70,6 @@ export const getDefaultModel = (provider: AiApiProvider): string => {
 };
 
 // 获取provider的API URL
-const getApiUrl = (provider: AiApiProvider): string => {
-  switch (provider) {
-    case 'openai':
-      return 'https://api.openai.com/v1/chat/completions';
-    case 'anthropic':
-      return 'https://api.anthropic.com/v1/messages';
-    case 'deepseek':
-      return 'https://api.deepseek.com/v1/chat/completions';
-    case 'doubao':
-      return 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-    case 'qwen':
-      return 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-    case 'zhipu':
-      return 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-    case 'ollama':
-      return 'http://localhost:11434/api/chat';
-    default:
-      return '';
-  }
-};
 
 // 调用AI API进行排版
 export async function callAiFormatting(
@@ -218,7 +198,7 @@ async function callOpenAI(
             const content = json.choices?.[0]?.delta?.content || '';
             result += content;
             onChunk(result);
-          } catch (e) {
+          } catch {
             // 忽略解析错误
           }
         }
@@ -283,7 +263,7 @@ async function callAnthropic(
             const content = json.delta?.text || '';
             result += content;
             onChunk(result);
-          } catch (e) {
+          } catch {
             // 忽略解析错误
           }
         }
@@ -347,7 +327,7 @@ async function callDeepSeek(
             const content = json.choices?.[0]?.delta?.content || '';
             result += content;
             onChunk(result);
-          } catch (e) {
+          } catch {
             // 忽略解析错误
           }
         }
@@ -407,7 +387,7 @@ async function callOllama(
           const content = json.message?.content || '';
           result += content;
           onChunk(result);
-        } catch (e) {
+        } catch {
           // 忽略解析错误
         }
       }
@@ -606,7 +586,7 @@ async function handleStreamResponse(
           const content = json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || json.message?.content || '';
           result += content;
           onChunk(result);
-        } catch (e) {
+        } catch {
           // 忽略解析错误
         }
       }

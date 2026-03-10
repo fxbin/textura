@@ -16,7 +16,6 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Copy, ExternalLink, ArrowRight, Bot, Sparkles, Zap, Loader2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { callAiFormatting } from '@/lib/aiService';
 import { openExternalLink } from '@/lib/link';
 
@@ -70,7 +69,7 @@ ${markdown}`;
       } else {
         throw new Error('Clipboard API not available');
       }
-    } catch (err) {
+    } catch {
       try {
         const textarea = document.createElement('textarea');
         textarea.value = prompt;
@@ -117,7 +116,7 @@ ${markdown}`;
       } else {
         toast.error(result.error || '调用失败');
       }
-    } catch (error) {
+    } catch {
       toast.error('调用失败，请检查 API 配置');
     } finally {
       setIsLoading(false);

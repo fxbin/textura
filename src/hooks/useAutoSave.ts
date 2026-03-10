@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
 import { useHistoryStore } from '@/store/historyStore';
-import { toast } from 'sonner';
 
 export function useAutoSave(intervalMs: number = 300000) {
     const isEnabled = useRef(true);

@@ -45,15 +45,13 @@ function writeRecoveryDraft(draft: RecoveryDraft | null) {
 }
 
 export function useDraftRecovery() {
-  const { markdown, setMarkdown, _hasHydrated } = useEditorStore((state) => ({
-    markdown: state.markdown,
-    setMarkdown: state.setMarkdown,
-    _hasHydrated: state._hasHydrated,
-  }));
+  const markdown = useEditorStore((state) => state.markdown);
+  const setMarkdown = useEditorStore((state) => state.setMarkdown);
+  const hasHydrated = useEditorStore((state) => state._hasHydrated);
   const [draft, setDraft] = React.useState<RecoveryDraft | null>(null);
 
   React.useEffect(() => {
-    if (!_hasHydrated) {
+    if (!hasHydrated) {
       return;
     }
 
@@ -63,10 +61,10 @@ export function useDraftRecovery() {
     }
 
     setDraft(storedDraft);
-  }, [_hasHydrated, markdown]);
+  }, [hasHydrated, markdown]);
 
   React.useEffect(() => {
-    if (!_hasHydrated) {
+    if (!hasHydrated) {
       return;
     }
 
@@ -83,7 +81,7 @@ export function useDraftRecovery() {
     }, 1200);
 
     return () => window.clearTimeout(timer);
-  }, [_hasHydrated, markdown]);
+  }, [hasHydrated, markdown]);
 
   const restoreDraft = React.useCallback(() => {
     if (!draft) {
