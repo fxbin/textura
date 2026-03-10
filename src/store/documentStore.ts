@@ -12,12 +12,28 @@ export interface DocumentMeta {
 interface DocumentState {
   documents: DocumentMeta[];
   currentDocumentId: string | null;
-  
   addDocument: (doc: DocumentMeta) => void;
   updateDocument: (id: string, updates: Partial<DocumentMeta>) => void;
   removeDocument: (id: string) => void;
   setCurrentDocument: (id: string | null) => void;
 }
+
+export interface SaveDocumentResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
+export interface OpenDocumentResult {
+  success: boolean;
+  content?: string;
+  name?: string;
+  path?: string;
+  error?: string;
+  warning?: string;
+}
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export const useDocumentStore = create<DocumentState>()(
   persist(
@@ -25,20 +41,21 @@ export const useDocumentStore = create<DocumentState>()(
       documents: [],
       currentDocumentId: null,
 
-      addDocument: (doc) => set((state) => ({
-        documents: [...state.documents, doc],
-      })),
+      addDocument: (doc) =>
+        set((state) => ({
+          documents: [...state.documents, doc],
+        })),
 
-      updateDocument: (id, updates) => set((state) => ({
-        documents: state.documents.map((doc) =>
-          doc.id === id ? { ...doc, ...updates } : doc
-        ),
-      })),
+      updateDocument: (id, updates) =>
+        set((state) => ({
+          documents: state.documents.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc)),
+        })),
 
-      removeDocument: (id) => set((state) => ({
-        documents: state.documents.filter((doc) => doc.id !== id),
-        currentDocumentId: state.currentDocumentId === id ? null : state.currentDocumentId,
-      })),
+      removeDocument: (id) =>
+        set((state) => ({
+          documents: state.documents.filter((doc) => doc.id !== id),
+          currentDocumentId: state.currentDocumentId === id ? null : state.currentDocumentId,
+        })),
 
       setCurrentDocument: (id) => set({ currentDocumentId: id }),
     }),
@@ -48,18 +65,54 @@ export const useDocumentStore = create<DocumentState>()(
   )
 );
 
-// 检测是否在 Tauri 环境中运行
-const isTauri = () => {
+function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI__' in window;
-};
+}
+
+function getFileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
+}
+
+function getFileExtension(name: string): string {
+  return name.split('.').pop()?.toLowerCase() || '';
+}
+
+function uint8ArrayToArrayBuffer(data: Uint8Array<ArrayBuffer>): ArrayBuffer {
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+}
+
+async function convertDocxToMarkdown(
+  arrayBuffer: ArrayBuffer,
+  sourceName: string
+): Promise<OpenDocumentResult> {
+  try {
+    const result = await mammoth.convertToMarkdown({ arrayBuffer });
+    const warning =
+      result.messages.length > 0
+        ? `${sourceName} 已导入，部分复杂样式已转为 Markdown 近似格式。`
+        : undefined;
+
+    return {
+      success: true,
+      content: result.value,
+      name: sourceName.replace(/\.docx$/i, '.md'),
+      warning,
+    };
+  } catch (error) {
+    console.error('Word conversion failed:', error);
+    return {
+      success: false,
+      error: 'DOCX 解析失败，请确认文件未损坏。',
+    };
+  }
+}
 
 export async function saveDocumentToFile(
   content: string,
   defaultName: string = 'document.md'
-): Promise<{ success: boolean; path?: string }> {
+): Promise<SaveDocumentResult> {
   try {
-    // Tauri 环境
-    if (isTauri()) {
+    if (isTauriRuntime()) {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { writeTextFile } = await import('@tauri-apps/plugin-fs');
 
@@ -71,86 +124,110 @@ export async function saveDocumentToFile(
         ],
       });
 
-      if (filePath) {
-        await writeTextFile(filePath, content);
-        return { success: true, path: filePath };
+      if (!filePath) {
+        return { success: false, error: '已取消保存。' };
       }
-    } else {
-      // 网页环境：使用浏览器原生下载功能
-      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = defaultName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      return { success: true };
-    }
-  } catch (err) {
-    console.error('Save error:', err);
-  }
 
-  return { success: false };
+      await writeTextFile(filePath, content);
+      return { success: true, path: filePath };
+    }
+
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = defaultName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Save error:', error);
+    return {
+      success: false,
+      error: '保存失败，请检查文件权限后重试。',
+    };
+  }
 }
 
-export async function openDocumentFromFile(): Promise<{
-  success: boolean;
-  content?: string;
-  name?: string;
-  path?: string;
-}> {
+export async function openDocumentFromFile(): Promise<OpenDocumentResult> {
   try {
-    // Tauri 环境 (TODO: 暂不支持 Tauri 下的 Word 导入，因为 mammoth 需要 Buffer/ArrayBuffer，Tauri fs 读取二进制需要适配)
-    // 目前简单实现 Web 环境下的 Word 导入
-    
-    // 网页环境：使用文件输入
-    return new Promise((resolve) => {
+    if (isTauriRuntime()) {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const { readFile, readTextFile } = await import('@tauri-apps/plugin-fs');
+
+      const selected = await open({
+        multiple: false,
+        filters: [
+          { name: 'Markdown', extensions: ['md', 'markdown'] },
+          { name: 'Text', extensions: ['txt'] },
+          { name: 'Word', extensions: ['docx'] },
+        ],
+      });
+
+      if (!selected || Array.isArray(selected)) {
+        return { success: false, error: '已取消打开文件。' };
+      }
+
+      const filePath = selected;
+      const fileName = getFileName(filePath);
+      const extension = getFileExtension(fileName);
+
+      if (extension === 'docx') {
+        const fileBuffer = await readFile(filePath);
+        const result = await convertDocxToMarkdown(uint8ArrayToArrayBuffer(fileBuffer), fileName);
+        return {
+          ...result,
+          path: filePath,
+        };
+      }
+
+      const content = await readTextFile(filePath);
+      return {
+        success: true,
+        content,
+        name: fileName,
+        path: filePath,
+      };
+    }
+
+    return await new Promise<OpenDocumentResult>((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.md,.markdown,.txt,text/markdown,text/plain,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      
-      input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
+      input.accept = `.md,.markdown,.txt,text/markdown,text/plain,.docx,${DOCX_MIME}`;
+
+      input.onchange = async (event) => {
+        const file = (event.target as HTMLInputElement).files?.[0];
         if (!file) {
-          resolve({ success: false });
+          resolve({ success: false, error: '已取消打开文件。' });
           return;
         }
 
         const fileName = file.name;
-        const fileExt = fileName.split('.').pop()?.toLowerCase();
+        const extension = getFileExtension(fileName);
 
-        if (fileExt === 'docx') {
-          // 处理 Word 文档
-          try {
-            const arrayBuffer = await file.arrayBuffer();
-            const result = await mammoth.convertToMarkdown({ arrayBuffer });
-            
-            if (result.messages.length > 0) {
-              console.warn('Word conversion messages:', result.messages);
-            }
-            
-            resolve({ 
-              success: true, 
-              content: result.value, 
-              name: fileName.replace(/\.docx$/i, '.md') 
-            });
-          } catch (err) {
-            console.error('Word conversion failed:', err);
-            resolve({ success: false });
-          }
-        } else {
-          // 处理普通文本/Markdown
-          const content = await file.text();
-          resolve({ success: true, content, name: fileName });
+        if (extension === 'docx') {
+          const result = await convertDocxToMarkdown(await file.arrayBuffer(), fileName);
+          resolve(result);
+          return;
         }
+
+        resolve({
+          success: true,
+          content: await file.text(),
+          name: fileName,
+        });
       };
+
       input.click();
     });
-  } catch (err) {
-    console.error('Open error:', err);
-    return { success: false };
+  } catch (error) {
+    console.error('Open error:', error);
+    return {
+      success: false,
+      error: '打开文件失败，请重试。',
+    };
   }
 }
 
