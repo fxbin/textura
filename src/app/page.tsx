@@ -2,6 +2,7 @@
 
 import { EditorPane } from '@/components/editor/EditorPane';
 import { PreviewPane } from '@/components/editor/PreviewPane';
+import { RecoveryBanner } from '@/components/layout/RecoveryBanner';
 import { TopNav } from '@/components/layout/TopNav';
 import {
   ResizableHandle,
@@ -22,6 +23,7 @@ export default function Home() {
     <main className="h-screen w-screen flex flex-col overflow-hidden bg-background relative">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-background to-background pointer-events-none select-none" />
       <TopNav />
+      <RecoveryBanner />
       <div className="flex-1 min-h-0 z-10">
         <ResizablePanelGroup orientation="horizontal" className="h-full">
           <ResizablePanel defaultSize={40} minSize={20} className="h-full">
