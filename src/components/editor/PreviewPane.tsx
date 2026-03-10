@@ -27,8 +27,8 @@ import { cn } from '@/lib/utils';
 import 'heti/umd/heti.min.css';
 import 'highlight.js/styles/github.css';
 import DeviceFrame from '@/components/preview/DeviceFrame';
+import { renderMermaidInHtml } from '@/lib/mermaid';
 import { Mermaid } from './Mermaid';
-import { renderMermaidSVG } from 'beautiful-mermaid';
 
 export function PreviewPane() {
   const {
@@ -69,120 +69,8 @@ export function PreviewPane() {
       }
 
       const rawHtml = md.render(deferredMarkdown);
-      let styledHtml = applyTheme(rawHtml, theme);
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(styledHtml, 'text/html');
-      const mermaidBlocks = doc.querySelectorAll('code.language-mermaid');
-
-      if (mermaidBlocks.length > 0) {
-        for (let index = 0; index < mermaidBlocks.length; index += 1) {
-          const block = mermaidBlocks[index];
-          let graphDefinition = block.textContent || '';
-          graphDefinition = graphDefinition.replace(/鈥?/g, '"').replace(/鈥?/g, '"');
-
-          try {
-            const svg = renderMermaidSVG(graphDefinition, {
-              bg: '#ffffff',
-              fg: '#1f2937',
-              line: '#4b5563',
-            });
-
-            const getSvgDimensions = (svgMarkup: string) => {
-              const svgParser = new DOMParser();
-              const svgDoc = svgParser.parseFromString(svgMarkup, 'image/svg+xml');
-              const svgElement = svgDoc.querySelector('svg');
-              if (!svgElement) {
-                return { width: 0, height: 0 };
-              }
-
-              let width = parseFloat(svgElement.getAttribute('width') || '0');
-              let height = parseFloat(svgElement.getAttribute('height') || '0');
-
-              if (width === 0 || height === 0) {
-                const viewBox = svgElement.getAttribute('viewBox');
-                if (viewBox) {
-                  const parts = viewBox.split(/\s+|,/).map(Number);
-                  if (parts.length === 4) {
-                    width = parts[2];
-                    height = parts[3];
-                  }
-                }
-              }
-
-              return { width, height };
-            };
-
-            const dimensions = getSvgDimensions(svg);
-            let fixedSvg = svg;
-
-            if ((!svg.includes('width=') || svg.includes('width="100%"')) && dimensions.width > 0) {
-              fixedSvg = fixedSvg.replace('<svg', `<svg width="${dimensions.width}" height="${dimensions.height}"`);
-            }
-
-            const image = document.createElement('img');
-            const blob = new Blob([fixedSvg], { type: 'image/svg+xml;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-
-            await new Promise<void>((resolve, reject) => {
-              image.onload = () => {
-                const canvas = document.createElement('canvas');
-                const scale = 2;
-                const finalWidth = image.width || dimensions.width;
-                const finalHeight = image.height || dimensions.height;
-
-                if (finalWidth === 0 || finalHeight === 0) {
-                  URL.revokeObjectURL(url);
-                  resolve();
-                  return;
-                }
-
-                canvas.width = finalWidth * scale;
-                canvas.height = finalHeight * scale;
-                const context = canvas.getContext('2d');
-
-                if (context) {
-                  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-                  const pngUrl = canvas.toDataURL('image/png');
-                  const preParent = block.parentElement;
-
-                  if (preParent && preParent.tagName === 'PRE') {
-                    const finalImage = document.createElement('img');
-                    finalImage.src = pngUrl;
-                    finalImage.style.maxWidth = '100%';
-                    finalImage.style.height = 'auto';
-                    finalImage.style.display = 'block';
-                    finalImage.style.margin = '20px auto';
-                    preParent.replaceWith(finalImage);
-                  }
-                }
-
-                URL.revokeObjectURL(url);
-                resolve();
-              };
-              image.onerror = reject;
-              image.src = url;
-            });
-          } catch (error: any) {
-            console.error('Failed to render mermaid diagram:', error);
-            const preParent = block.parentElement;
-            if (preParent && preParent.tagName === 'PRE') {
-              const errorDiv = document.createElement('div');
-              errorDiv.style.color = '#ef4444';
-              errorDiv.style.fontSize = '12px';
-              errorDiv.style.padding = '8px';
-              errorDiv.style.marginTop = '4px';
-              errorDiv.style.backgroundColor = '#fef2f2';
-              errorDiv.style.borderRadius = '4px';
-              errorDiv.style.border = '1px solid #fee2e2';
-              errorDiv.innerText = `Mermaid Error: ${error.message || 'Syntax error'}`;
-              preParent.appendChild(errorDiv);
-            }
-          }
-        }
-
-        styledHtml = doc.body.innerHTML;
-      }
+      const themedHtml = applyTheme(rawHtml, theme);
+      const styledHtml = await renderMermaidInHtml(themedHtml);
 
       setHtmlContent(styledHtml);
     };

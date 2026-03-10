@@ -85,6 +85,7 @@ interface EditorState {
   setDeviceModel: (model: DeviceModel) => void;
   setCustomSize: (width: number, height: number) => void;
   setCustomThemeCss: (css: string) => void;
+  setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   toggleScrollSync: () => void;
   toggleStats: () => void;
@@ -325,6 +326,7 @@ export const useEditorStore = create<EditorState>()(
         setDeviceModel: (deviceModel) => set({ deviceModel }),
         setCustomSize: (customWidth, customHeight) => set({ customWidth, customHeight }),
         setCustomThemeCss: (customThemeCss) => set({ customThemeCss }),
+        setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
         toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
         toggleScrollSync: () => set((state) => ({ isScrollSyncEnabled: !state.isScrollSyncEnabled })),
         toggleStats: () => set((state) => ({ isStatsVisible: !state.isStatsVisible })),

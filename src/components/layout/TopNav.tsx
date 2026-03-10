@@ -74,7 +74,7 @@ function formatDocumentMeta(currentPath?: string, source?: string, lastSavedAt?:
 export function TopNav() {
   const {
     isSidebarOpen,
-    toggleSidebar,
+    setSidebarOpen,
     resetMarkdown,
     fontSize,
     setFontSize,
@@ -635,7 +635,7 @@ export function TopNav() {
         <SettingsDialog />
         <HistoryDialog />
 
-        <Sheet open={isSidebarOpen} onOpenChange={toggleSidebar}>
+        <Sheet open={isSidebarOpen} onOpenChange={setSidebarOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground">
               <PanelRightOpen className="h-4 w-4" />

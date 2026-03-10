@@ -1,16 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import mermaid from 'mermaid';
-
-if (typeof window !== 'undefined') {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'default',
-    securityLevel: 'loose',
-    fontFamily: 'inherit',
-  });
-}
+import { normalizeMermaidDefinition, renderMermaidSvg } from '@/lib/mermaid';
 
 interface MermaidProps {
   chart: string;
@@ -26,7 +17,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
     const renderChart = async () => {
       try {
         const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
-        const rendered = await mermaid.render(id, chart);
+        const rendered = await renderMermaidSvg(chart, id);
 
         if (!mounted) {
           return;
@@ -56,7 +47,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
       <div className="p-4 my-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
         <p className="font-semibold">Mermaid Diagram Error:</p>
         <pre className="mt-1 whitespace-pre-wrap">{error}</pre>
-        <pre className="mt-2 text-xs text-gray-500 bg-gray-100 p-2 rounded">{chart}</pre>
+        <pre className="mt-2 text-xs text-gray-500 bg-gray-100 p-2 rounded">{normalizeMermaidDefinition(chart)}</pre>
       </div>
     );
   }
