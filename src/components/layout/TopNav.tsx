@@ -42,13 +42,13 @@ import { ThemeSelector } from '@/components/editor/ThemeSelector';
 import { examples } from '@/lib/examples';
 
 export function TopNav() {
-  const { 
-    isSidebarOpen, 
-    toggleSidebar, 
-    resetMarkdown, 
-    fontSize, 
-    setFontSize, 
-    markdown, 
+  const {
+    isSidebarOpen,
+    toggleSidebar,
+    resetMarkdown,
+    fontSize,
+    setFontSize,
+    markdown,
     setMarkdown,
     isStatsVisible,
     toggleStats
@@ -77,20 +77,25 @@ export function TopNav() {
 
   const handleExportHtml = () => {
     try {
-      const previewElement = document.querySelector('.heti');
+      const previewElement = document.querySelector('#print-area');
       if (!previewElement) {
         toast.error('未找到预览内容');
         return;
       }
 
-      const htmlContent = previewElement.outerHTML;
-      const styleTag = previewElement.parentElement?.querySelector('style');
-      const css = styleTag ? styleTag.innerHTML : '';
+      const clone = previewElement.cloneNode(true) as HTMLElement;
+      const htmlContent = clone.innerHTML;
+
+      const styleTags = document.querySelectorAll('style');
+      let css = '';
+      styleTags.forEach(tag => {
+        css += tag.innerHTML;
+      });
 
       const inlinedHtml = juice(htmlContent, {
         extraCss: css,
         applyStyleTags: true,
-        removeStyleTags: true,
+        removeStyleTags: false,
         preserveImportant: true
       });
 
@@ -100,8 +105,12 @@ export function TopNav() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Textura Export</title>
+  <style>
+    body { margin: 0; padding: 20px; background-color: #fff; }
+    img { max-width: 100%; height: auto; }
+  </style>
 </head>
-<body style="margin: 0; padding: 20px; background-color: #fff;">
+<body>
   ${inlinedHtml}
 </body>
 </html>`;
@@ -122,8 +131,150 @@ export function TopNav() {
     }
   };
 
-  const handleExportPdf = () => {
-    window.print();
+  const buildPdfExportMarkup = (previewElement: HTMLElement) => {
+    const clone = previewElement.cloneNode(true) as HTMLElement;
+    clone.id = 'print-area';
+    clone.style.height = 'auto';
+    clone.style.overflow = 'visible';
+
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map((tag) => tag.innerHTML)
+      .join('\n');
+    const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+      .map((link) => link.outerHTML)
+      .join('\n');
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Textura PDF Export</title>
+  ${links}
+  <style>
+    ${styles}
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff !important;
+    }
+    body {
+      min-height: auto;
+      background-image: none !important;
+    }
+    .print-shell {
+      width: 800px;
+      margin: 0 auto;
+      padding: 24px;
+      box-sizing: border-box;
+      background: #ffffff;
+    }
+    .print-shell img {
+      max-width: 100%;
+      height: auto;
+    }
+    @media print {
+      body * {
+        visibility: visible !important;
+      }
+      .print-shell {
+        width: auto;
+        margin: 0;
+        padding: 0;
+      }
+      #print-area {
+        position: static !important;
+        left: auto !important;
+        top: auto !important;
+        width: auto !important;
+        height: auto !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        z-index: auto !important;
+      }
+      #print-area, #print-area * {
+        visibility: visible !important;
+      }
+    }
+    @page {
+      size: A4;
+      margin: 10mm;
+    }
+  </style>
+</head>
+<body>
+  <div class="print-shell">${clone.outerHTML}</div>
+</body>
+</html>`;
+  };
+
+  const handleExportPdf = async () => {
+    const element = document.getElementById('print-area');
+    if (!element) {
+      toast.error('未找到预览内容');
+      return;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.position = 'fixed';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    toast.loading('正在准备打印预览...', { id: 'pdf-export' });
+
+    try {
+      const frameDoc = iframe.contentDocument;
+      if (!frameDoc) {
+        throw new Error('初始化打印窗口失败');
+      }
+
+      frameDoc.open();
+      frameDoc.write(buildPdfExportMarkup(element));
+      frameDoc.close();
+
+      const frameWindow = iframe.contentWindow;
+      if (!frameWindow) {
+        throw new Error('无法访问打印窗口');
+      }
+
+      toast.dismiss('pdf-export');
+      toast.success('已打开打印窗口');
+
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const cleanup = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          frameWindow.removeEventListener('afterprint', cleanup);
+          setTimeout(() => {
+            if (iframe.parentNode) {
+              document.body.removeChild(iframe);
+            }
+          }, 0);
+          resolve();
+        };
+
+        frameWindow.addEventListener('afterprint', cleanup, { once: true });
+        setTimeout(cleanup, 2000);
+        frameWindow.focus();
+        frameWindow.print();
+      });
+    } catch (err: unknown) {
+      console.error('Print export failed:', err);
+      toast.dismiss('pdf-export');
+      toast.error('打开打印窗口失败');
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+    }
   };
 
   const handleOpen = async () => {
@@ -208,7 +359,6 @@ export function TopNav() {
 
   return (
     <header className="h-14 border-b border-border/40 bg-background/80 backdrop-blur-xl flex items-center px-4 justify-between flex-none z-50 sticky top-0 w-full shrink-0 transition-all duration-300">
-      {/* Left: Brand */}
       <div className="flex items-center gap-3 select-none">
         <div className="flex items-center gap-2 group cursor-pointer transition-opacity hover:opacity-80">
           <div className="w-8 h-8 flex items-center justify-center overflow-hidden rounded-md">
@@ -221,9 +371,7 @@ export function TopNav() {
         </div>
       </div>
 
-      {/* Right: Actions */}
       <div className="flex items-center gap-1.5 md:gap-2">
-        {/* Example Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-muted-foreground hover:text-foreground hidden md:flex">
@@ -255,7 +403,6 @@ export function TopNav() {
 
         <Separator orientation="vertical" className="h-4 hidden md:block" />
 
-        {/* File Operations Group */}
         <div className="flex items-center gap-0.5 bg-secondary/50 p-1 rounded-lg border border-border/50">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -307,7 +454,6 @@ export function TopNav() {
 
         <Separator orientation="vertical" className="h-6 mx-1 bg-border/40" />
 
-        {/* Font Size & Settings */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 font-medium text-xs text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-colors">
@@ -360,7 +506,6 @@ export function TopNav() {
 
         <Separator orientation="vertical" className="h-6 mx-1 bg-border/40" />
 
-        {/* Primary Action */}
         <Button
           onClick={handleCopy}
           size="sm"
