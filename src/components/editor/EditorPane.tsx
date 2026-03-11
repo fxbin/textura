@@ -40,12 +40,12 @@ export function EditorPane() {
     registerEditorScroller,
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
+  
+  // Use callback ref to ensure registration
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-
-  React.useEffect(() => {
-    if (textareaRef.current) {
-      registerEditorScroller(textareaRef.current);
-    }
+  const setTextareaRef = React.useCallback((node: HTMLTextAreaElement | null) => {
+    textareaRef.current = node; // Keep ref for internal usage (insertFormat)
+    registerEditorScroller(node);
   }, [registerEditorScroller]);
 
   const insertFormat = (prefix: string, suffix = '', placeholder = 'text') => {
@@ -326,7 +326,7 @@ export function EditorPane() {
       </div>
 
       <Textarea
-        ref={textareaRef}
+        ref={setTextareaRef}
         value={markdown}
         onChange={(event) => setMarkdown(event.target.value)}
         onPaste={onPaste}
