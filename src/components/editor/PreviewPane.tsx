@@ -48,18 +48,14 @@ export function PreviewPane() {
   const [mounted, setMounted] = React.useState(false);
   const [htmlContent, setHtmlContent] = React.useState('');
   const deferredMarkdown = React.useDeferredValue(markdown);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const setPreviewViewportRef = React.useCallback((node: HTMLDivElement | null) => {
+    registerPreviewScroller(node);
+  }, [registerPreviewScroller]);
   const contentRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
-
-  React.useEffect(() => {
-    if (scrollRef.current) {
-      registerPreviewScroller(scrollRef.current);
-    }
-  }, [registerPreviewScroller]);
 
   const isPresetTheme = React.useMemo(() => THEMES.some((item) => item.id === theme), [theme]);
 
@@ -168,7 +164,6 @@ export function PreviewPane() {
   const renderContent = () => (
     <div
       id="print-area"
-      ref={scrollRef}
       className={cn(
         'flex-1 overflow-y-auto overflow-x-hidden no-scrollbar bg-white h-full',
         deviceModel === 'pc' ? 'px-8 md:px-12 lg:px-16 py-8' : 'px-0'
@@ -339,7 +334,7 @@ export function PreviewPane() {
         </div>
       </div>
 
-      <div className="flex flex-1 items-start justify-center overflow-y-auto p-4 md:p-8">
+      <div ref={setPreviewViewportRef} className="flex flex-1 items-start justify-center overflow-y-auto p-4 md:p-8">
         <div className="w-full max-w-5xl space-y-3">
           {!isPresetTheme && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-50/80 px-4 py-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-100">
