@@ -7,12 +7,12 @@ export const redAccentThemes: Theme[] = [
     description: '经典的红黑配色，适合正式文档与强调重点',
     styles: {
       container: 'font-family: PingFangSC-Light; color: #3e3e3e; line-height: 1.75; padding: 20px;',
-      p: 'margin: 10px 10px; line-height: 1.75; letter-spacing: 0.2em; font-size: 14px; word-spacing: 0.1em; text-align: justify;',
+      p: 'margin: 10px 10px 20px; line-height: 1.75; letter-spacing: 0.2em; font-size: 14px; word-spacing: 0.1em; text-align: justify;',
       // H1 - Full width bottom border
       h1: 'display: block; margin: 20px 0 15px; padding-bottom: 5px; border-bottom: 3px solid rgb(248,57,41); font-size: 22px; font-weight: bold; color: #3e3e3e; text-align: left; line-height: 1.4;',
       
-      // H2 - Thick left border
-      h2: 'display: block; margin: 30px 0 15px; padding-left: 12px; border-left: 6px solid rgb(248,57,41); font-size: 18px; font-weight: bold; color: #3e3e3e; line-height: 1.4;',
+      // H2 - Thick left border with better vertical alignment
+      h2: 'display: block; margin: 30px 0 15px; padding: 2px 0 2px 12px; border-left: 6px solid rgb(248,57,41); font-size: 18px; font-weight: bold; color: #3e3e3e; line-height: 1.4;',
       
       // H3 - Thin left border with colored text
       h3: 'display: block; margin: 20px 0 10px; padding-left: 8px; border-left: 3px solid rgb(248,57,41); font-size: 16px; font-weight: bold; color: rgb(248,57,41); line-height: 1.4;',
