@@ -66,14 +66,14 @@ export function PreviewPane() {
       }
 
       const rawHtml = md.render(deferredMarkdown);
-      const themedHtml = applyTheme(rawHtml, theme);
+      const themedHtml = applyTheme(rawHtml, theme, fontSize);
       const styledHtml = await renderMermaidInHtml(themedHtml);
 
       setHtmlContent(styledHtml);
     };
 
     processContent();
-  }, [deferredMarkdown, theme, isPresetTheme]);
+  }, [deferredMarkdown, theme, fontSize, isPresetTheme]);
 
   const stats = React.useMemo(() => {
     const cleanText = deferredMarkdown.replace(/\s/g, '');

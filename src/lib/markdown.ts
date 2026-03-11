@@ -39,12 +39,25 @@ export function preprocessMarkdown(content: string) {
     return content;
 }
 
-export function applyTheme(html: string, themeId: string) {
+export function applyTheme(html: string, themeId: string, fontSize?: number) {
     // In SSR environment, DOMParser might not be available.
     if (typeof window === 'undefined') return html;
 
     const theme = THEMES.find(t => t.id === themeId) || THEMES[0];
-    const style = theme.styles;
+    const style = { ...theme.styles };
+
+    if (fontSize) {
+        const baseFontSize = `${fontSize}px`;
+        const appendFontSize = (value?: string) =>
+            `${value || ''}${value ? ' ' : ''}font-size: ${baseFontSize} !important;`;
+
+        style.p = appendFontSize(style.p);
+        style.li = appendFontSize(style.li);
+        style.blockquote = appendFontSize(style.blockquote);
+        style.td = appendFontSize(style.td);
+        style.th = appendFontSize(style.th);
+        style.table = appendFontSize(style.table);
+    }
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
