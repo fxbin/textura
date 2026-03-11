@@ -48,6 +48,20 @@ export function EditorPane() {
     registerEditorScroller(node);
   }, [registerEditorScroller]);
 
+  const restoreTextareaView = React.useCallback(
+    (selectionStart: number, selectionEnd: number, scrollTop: number) => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+      textarea.scrollTop = scrollTop;
+    },
+    []
+  );
+
   const insertFormat = (prefix: string, suffix = '', placeholder = 'text') => {
     const textarea = textareaRef.current;
     if (!textarea) {
@@ -57,6 +71,7 @@ export function EditorPane() {
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const text = textarea.value;
+    const scrollTop = textarea.scrollTop;
     const selection = text.substring(start, end);
     const content = selection || placeholder;
     const newText = text.substring(0, start) + prefix + content + suffix + text.substring(end);
@@ -64,10 +79,68 @@ export function EditorPane() {
     setMarkdown(newText);
 
     setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + prefix.length, start + prefix.length + content.length);
+      restoreTextareaView(
+        start + prefix.length,
+        start + prefix.length + content.length,
+        scrollTop
+      );
     }, 0);
   };
+
+  const insertBlockquote = React.useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const scrollTop = textarea.scrollTop;
+
+    if (start !== end) {
+      const selectedText = text.substring(start, end);
+      const quotedSelection = selectedText
+        .split('\n')
+        .map((line) => (line.trim() ? `> ${line}` : '>'))
+        .join('\n');
+      const newText = text.substring(0, start) + quotedSelection + text.substring(end);
+
+      setMarkdown(newText);
+
+      setTimeout(() => {
+        restoreTextareaView(start, start + quotedSelection.length, scrollTop);
+      }, 0);
+      return;
+    }
+
+    const lineStart = text.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    const nextLineBreak = text.indexOf('\n', start);
+    const lineEnd = nextLineBreak === -1 ? text.length : nextLineBreak;
+    const currentLine = text.substring(lineStart, lineEnd);
+
+    if (currentLine.trim()) {
+      const isAlreadyQuoted = currentLine.startsWith('> ');
+      const quotedLine = isAlreadyQuoted ? currentLine : `> ${currentLine}`;
+      const newText = text.substring(0, lineStart) + quotedLine + text.substring(lineEnd);
+      const caretOffset = isAlreadyQuoted ? 0 : 2;
+
+      setMarkdown(newText);
+
+      setTimeout(() => {
+        restoreTextareaView(start + caretOffset, start + caretOffset, scrollTop);
+      }, 0);
+      return;
+    }
+
+    const insertion = '> ';
+    const newText = text.substring(0, start) + insertion + text.substring(end);
+    setMarkdown(newText);
+
+    setTimeout(() => {
+      restoreTextareaView(start + insertion.length, start + insertion.length, scrollTop);
+    }, 0);
+  }, [restoreTextareaView, setMarkdown]);
 
   const handleAutoFormat = React.useCallback(() => {
     if (!markdown.trim()) {
@@ -234,7 +307,7 @@ export function EditorPane() {
             <Italic className="h-4 w-4" />
           </Button>
           <div className="mx-1 h-4 w-px bg-border" />
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('> ', '\n', '引用')} title="引用">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={insertBlockquote} title="引用">
             <Quote className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('```\n', '\n```', '代码块')} title="代码块">
