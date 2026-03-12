@@ -25,7 +25,7 @@ import { toast } from 'sonner';
 import { useEditorStore } from '@/store/useEditorStore';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, calculateWordCount } from '@/lib/utils';
 import { autoFormatMarkdown, formatWeChatLinks } from '@/lib/formatter';
 import { handleSmartPaste } from '@/lib/htmlToMarkdown';
 import { AiAssistDialog } from './AiAssistDialog';
@@ -41,6 +41,8 @@ export function EditorPane() {
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
   
+  const stats = React.useMemo(() => calculateWordCount(markdown), [markdown]);
+
   // Use callback ref to ensure registration
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const setTextareaRef = React.useCallback((node: HTMLTextAreaElement | null) => {
@@ -425,7 +427,7 @@ export function EditorPane() {
           onClick={toggleStats}
           title="点击切换预览区字数统计"
         >
-          {markdown.length} 字
+          {stats.charCount} 字
         </div>
       </div>
     </div>

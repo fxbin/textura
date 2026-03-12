@@ -23,7 +23,7 @@ import { THEMES } from '@/lib/themes/index';
 import { md, applyTheme } from '@/lib/markdown';
 import { makeWeChatCompatible } from '@/lib/wechatCompat';
 import { copyRichContent } from '@/lib/clipboard';
-import { cn } from '@/lib/utils';
+import { cn, calculateWordCount } from '@/lib/utils';
 import 'heti/umd/heti.min.css';
 import 'highlight.js/styles/github.css';
 import DeviceFrame from '@/components/preview/DeviceFrame';
@@ -76,16 +76,7 @@ export function PreviewPane() {
   }, [deferredMarkdown, theme, fontSize, isPresetTheme]);
 
   const stats = React.useMemo(() => {
-    const cleanText = deferredMarkdown.replace(/\s/g, '');
-    const charCount = cleanText.length;
-    const chineseChars = deferredMarkdown.match(/[\u4e00-\u9fa5]/g) || [];
-    const chineseCount = chineseChars.length;
-    const nonChineseText = deferredMarkdown.replace(/[\u4e00-\u9fa5]/g, ' ');
-    const words = nonChineseText.trim().split(/\s+/).filter((item) => item.length > 0);
-    const wordCount = words.length;
-    const readTimeMinutes = chineseCount / 400 + wordCount / 200;
-    const readTime = Math.ceil(readTimeMinutes) || 1;
-
+    const { charCount, readTime } = calculateWordCount(deferredMarkdown);
     return {
       count: charCount,
       time: readTime,

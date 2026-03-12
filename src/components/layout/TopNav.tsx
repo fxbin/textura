@@ -296,11 +296,75 @@ export function TopNav() {
 </html>`;
   };
 
+  const exportPdfViaTauriBrowser = async (markup: string) => {
+    const [{ writeTextFile }, { downloadDir, join }, { open }, { save }] = await Promise.all([
+      import('@tauri-apps/plugin-fs'),
+      import('@tauri-apps/api/path'),
+      import('@tauri-apps/plugin-shell'),
+      import('@tauri-apps/plugin-dialog'),
+    ]);
+
+    const fileName = `textura-print-${new Date().toISOString().split('T')[0]}.html`;
+
+    try {
+      const downloadsPath = await downloadDir();
+      const targetPath = await join(downloadsPath, fileName);
+      await writeTextFile(targetPath, markup);
+      await open(targetPath);
+      return { ok: true, usedSaveDialog: false, cancelled: false };
+    } catch (error) {
+      console.warn('Failed to write printable HTML to downloads:', error);
+    }
+
+    const targetPath = await save({
+      defaultPath: fileName,
+      filters: [{ name: 'HTML', extensions: ['html'] }],
+    });
+
+    if (!targetPath) {
+      return { ok: false, usedSaveDialog: true, cancelled: true };
+    }
+
+    await writeTextFile(targetPath, markup);
+    await open(targetPath);
+    return { ok: true, usedSaveDialog: true, cancelled: false };
+  };
+
   const handleExportPdf = async () => {
     const element = document.getElementById('print-area');
     if (!element) {
       toast.error('未找到预览内容');
       return;
+    }
+
+    const markup = buildPdfExportMarkup(element);
+
+    if (tauriRuntime) {
+      toast.loading('姝ｅ湪鍑嗗 PDF 鎵撳嵃鏂囨。...', { id: 'pdf-export' });
+
+      try {
+        const result = await exportPdfViaTauriBrowser(markup);
+        toast.dismiss('pdf-export');
+
+        if (!result.ok) {
+          if (!result.cancelled) {
+            toast.error('瀵煎嚭 PDF 澶辫触');
+          }
+          return;
+        }
+
+        toast.success(
+          result.usedSaveDialog
+            ? '宸插啓鍏ユ墦鍗版枃妗ｏ紝骞跺湪绯荤粺娴忚鍣ㄤ腑鎵撳紑銆傝浣跨敤鈥滄墦鍗?鍙︿繚瀛樹负 PDF鈥濄€?'
+            : '宸插湪绯荤粺娴忚鍣ㄤ腑鎵撳紑鎵撳嵃鏂囨。銆傝浣跨敤鈥滄墦鍗?鍙︿繚瀛樹负 PDF鈥濄€?'
+        );
+        return;
+      } catch (error) {
+        console.error('Tauri PDF export failed:', error);
+        toast.dismiss('pdf-export');
+        toast.error('妗岄潰鐗?PDF 瀵煎嚭澶辫触');
+        return;
+      }
     }
 
     const iframe = document.createElement('iframe');
@@ -322,7 +386,7 @@ export function TopNav() {
       }
 
       frameDoc.open();
-      frameDoc.write(buildPdfExportMarkup(element));
+      frameDoc.write(markup);
       frameDoc.close();
 
       const frameWindow = iframe.contentWindow;
@@ -360,7 +424,7 @@ export function TopNav() {
 
       const fallbackWindow = window.open('', '_blank', 'noopener,noreferrer');
       if (fallbackWindow) {
-        fallbackWindow.document.write(buildPdfExportMarkup(element));
+        fallbackWindow.document.write(markup);
         fallbackWindow.document.close();
         toast.error('系统打印被拦截，已在新标签页打开可打印内容。');
       } else {
