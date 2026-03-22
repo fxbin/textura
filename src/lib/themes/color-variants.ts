@@ -19,12 +19,14 @@ const createThemeVariant = (
   const BASE_SECONDARY = '#ff3502';      // Light Red
   const BASE_BG = '#FBF9FD';             // Light Background
   const BASE_BORDER_QUOTE = '#e34c3c';   // Quote Border (Red)
+  const BASE_PRIMARY_RGB_REGEX = /rgb\(\s*248\s*,\s*57\s*,\s*41\s*\)/gi;
 
   const newStyles: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(styles)) {
     let newValue = value;
     // Replace all occurrences
+    newValue = newValue.replace(BASE_PRIMARY_RGB_REGEX, primaryColor);
     newValue = newValue.replaceAll(BASE_PRIMARY, primaryColor);
     newValue = newValue.replaceAll(BASE_SECONDARY, secondaryColor);
     newValue = newValue.replaceAll(BASE_BG, bgColor);

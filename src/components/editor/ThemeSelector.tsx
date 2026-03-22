@@ -99,6 +99,18 @@ export function ThemeSelector() {
     return match ? match[1].trim() : null;
   };
 
+  const extractColorFromShorthand = (styleStr: string, prop: string): string | null => {
+    const value = extractStyle(styleStr, prop);
+    if (!value) {
+      return null;
+    }
+
+    const colorMatch = value.match(/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/);
+    return colorMatch ? colorMatch[1] : null;
+  };
+
+  const firstNonNull = (...values: Array<string | null>) => values.find(Boolean) || null;
+
   const parseCssToStyles = (css: string): Record<string, string> => {
     const styles: Record<string, string> = {};
 
@@ -137,18 +149,45 @@ export function ThemeSelector() {
   };
 
   const renderThemeSwatch = (styles: Record<string, string>) => {
-    const bg = extractStyle(styles.container || '', 'background-color') || '#fff';
-    const textColor = extractStyle(styles.p || '', 'color') || '#333';
-    const h1Color = extractStyle(styles.h1 || '', 'color') || textColor;
-    const accentColor = extractStyle(styles.a || styles.blockquote || '', 'color') || h1Color;
+    const bg = firstNonNull(
+      extractStyle(styles.container || '', 'background-color'),
+      extractStyle(styles.blockquote || '', 'background-color'),
+      extractStyle(styles.pre || '', 'background-color'),
+      '#fff'
+    )!;
+
+    const textColor = firstNonNull(
+      extractStyle(styles.p || '', 'color'),
+      extractStyle(styles.container || '', 'color'),
+      extractStyle(styles.li || '', 'color'),
+      '#333'
+    )!;
+
+    const headingColor = firstNonNull(
+      extractStyle(styles.h1 || '', 'color'),
+      extractStyle(styles.h2 || '', 'color'),
+      extractStyle(styles.h3 || '', 'color'),
+      textColor
+    )!;
+
+    const accentColor = firstNonNull(
+      extractStyle(styles.a || '', 'color'),
+      extractStyle(styles.strong || '', 'color'),
+      extractColorFromShorthand(styles.h2 || '', 'border-left'),
+      extractColorFromShorthand(styles.h1 || '', 'border-bottom'),
+      extractColorFromShorthand(styles.h3 || '', 'border-left'),
+      extractColorFromShorthand(styles.blockquote || '', 'border-left'),
+      extractStyle(styles.blockquote || '', 'border-left-color'),
+      headingColor
+    )!;
 
     return (
       <div className="w-full h-full flex flex-col p-3 gap-2" style={{ backgroundColor: bg }}>
         {/* Title Line (H1) */}
-        <div className="w-3/4 h-2.5 rounded-sm" style={{ backgroundColor: h1Color, opacity: 0.9 }} />
+        <div className="w-3/4 h-2.5 rounded-sm" style={{ backgroundColor: headingColor, opacity: 0.9 }} />
 
         {/* Secondary Line (H2) */}
-        <div className="w-1/2 h-2 rounded-sm" style={{ backgroundColor: h1Color, opacity: 0.7 }} />
+        <div className="w-1/2 h-2 rounded-sm" style={{ backgroundColor: headingColor, opacity: 0.7 }} />
 
         {/* Body Lines (P) */}
         <div className="flex flex-col gap-1.5 mt-1">
