@@ -340,7 +340,7 @@ export function TopNav() {
     const markup = buildPdfExportMarkup(element);
 
     if (tauriRuntime) {
-      toast.loading('姝ｅ湪鍑嗗 PDF 鎵撳嵃鏂囨。...', { id: 'pdf-export' });
+      toast.loading('正在准备 PDF 打印文档...', { id: 'pdf-export' });
 
       try {
         const result = await exportPdfViaTauriBrowser(markup);
@@ -348,21 +348,21 @@ export function TopNav() {
 
         if (!result.ok) {
           if (!result.cancelled) {
-            toast.error('瀵煎嚭 PDF 澶辫触');
+            toast.error('导出 PDF 失败');
           }
           return;
         }
 
         toast.success(
           result.usedSaveDialog
-            ? '宸插啓鍏ユ墦鍗版枃妗ｏ紝骞跺湪绯荤粺娴忚鍣ㄤ腑鎵撳紑銆傝浣跨敤鈥滄墦鍗?鍙︿繚瀛樹负 PDF鈥濄€?'
-            : '宸插湪绯荤粺娴忚鍣ㄤ腑鎵撳紑鎵撳嵃鏂囨。銆傝浣跨敤鈥滄墦鍗?鍙︿繚瀛樹负 PDF鈥濄€?'
+            ? '已写入可打印 HTML，并在系统浏览器中打开。请使用“打印 / 另存为 PDF”。'
+            : '已在系统浏览器中打开打印文档。请使用“打印 / 另存为 PDF”。'
         );
         return;
       } catch (error) {
         console.error('Tauri PDF export failed:', error);
         toast.dismiss('pdf-export');
-        toast.error('妗岄潰鐗?PDF 瀵煎嚭澶辫触');
+        toast.error('桌面端 PDF 导出失败');
         return;
       }
     }

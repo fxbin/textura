@@ -44,3 +44,6 @@ next-env.d.ts
 # tauri
 /src-tauri/target
 /src-tauri/gen
+
+# local beta release notes
+/RELEASE_NOTES_BETA.md

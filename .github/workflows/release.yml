@@ -40,6 +40,16 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Textura v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
+          releaseBody: |
+            ## Textura Beta
+
+            发布前请根据仓库根目录 `RELEASE_NOTES_BETA.md` 补充本次版本说明。
+
+            ### 已知限制
+            - 自定义主题复制到微信不保证完全保真
+            - PDF 当前依赖浏览器 / 系统打印链路
+            - AI 配置保存在本地，不做云同步
+            - 历史快照与恢复为本地单机能力
+            - 当前发布流程主要覆盖 Windows / macOS
           releaseDraft: true
           prerelease: false
