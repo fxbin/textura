@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import Image from 'next/image';
-import juice from 'juice';
 import { toast } from 'sonner';
 import {
   Check,
@@ -69,6 +68,111 @@ function formatDocumentMeta(currentPath?: string, source?: string, lastSavedAt?:
     default:
       return '本地草稿';
   }
+}
+
+function inlineComputedStyles(sourceElement: Element, targetElement: Element) {
+  const computedStyle = window.getComputedStyle(sourceElement);
+  const cssText = Array.from(computedStyle)
+    .map((property) => {
+      const value = computedStyle.getPropertyValue(property);
+      const priority = computedStyle.getPropertyPriority(property);
+      return `${property}: ${value}${priority ? ` !${priority}` : ''};`;
+    })
+    .join(' ');
+
+  if (cssText) {
+    targetElement.setAttribute('style', cssText);
+  }
+
+  const sourceChildren = Array.from(sourceElement.children);
+  const targetChildren = Array.from(targetElement.children);
+  const childCount = Math.min(sourceChildren.length, targetChildren.length);
+
+  for (let index = 0; index < childCount; index += 1) {
+    inlineComputedStyles(sourceChildren[index], targetChildren[index]);
+  }
+}
+
+function clonePreviewWithInlineStyles(previewElement: HTMLElement) {
+  const clone = previewElement.cloneNode(true) as HTMLElement;
+  inlineComputedStyles(previewElement, clone);
+
+  clone.id = 'print-area';
+  clone.style.height = 'auto';
+  clone.style.minHeight = 'auto';
+  clone.style.overflow = 'visible';
+  clone.style.maxWidth = '100%';
+  clone.style.width = '100%';
+
+  clone.querySelectorAll('script').forEach((node) => node.remove());
+
+  return clone;
+}
+
+function buildStandaloneDocument(options: {
+  title: string;
+  shellWidth: number;
+  contentHtml: string;
+  printMode?: boolean;
+}) {
+  const { title, shellWidth, contentHtml, printMode = false } = options;
+
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+    }
+    body {
+      padding: 24px;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .export-shell {
+      width: min(100%, ${shellWidth}px);
+      margin: 0 auto;
+      background: #ffffff;
+      box-sizing: border-box;
+    }
+    .export-shell,
+    .export-shell * {
+      box-sizing: border-box;
+    }
+    .export-shell img,
+    .export-shell svg {
+      max-width: 100%;
+      height: auto;
+    }
+    ${
+      printMode
+        ? `
+    @media print {
+      body {
+        padding: 0;
+      }
+      .export-shell {
+        width: 100%;
+        margin: 0;
+      }
+    }
+    @page {
+      size: A4;
+      margin: 10mm;
+    }`
+        : ''
+    }
+  </style>
+</head>
+<body>
+  <div class="export-shell">${contentHtml}</div>
+</body>
+</html>`;
 }
 
 export function TopNav() {
@@ -168,39 +272,19 @@ export function TopNav() {
 
   const handleExportHtml = () => {
     try {
-      const previewElement = document.querySelector('#print-area');
+      const previewElement = document.querySelector('#print-area') as HTMLElement | null;
       if (!previewElement) {
         toast.error('未找到预览内容');
         return;
       }
 
-      const htmlContent = (previewElement as HTMLElement).cloneNode(true) as HTMLElement;
-      const styleTags = document.querySelectorAll('style');
-      let css = '';
-      styleTags.forEach((tag) => {
-        css += tag.innerHTML;
+      const exportClone = clonePreviewWithInlineStyles(previewElement);
+      const shellWidth = Math.max(Math.round(previewElement.getBoundingClientRect().width), 320);
+      const fullHtml = buildStandaloneDocument({
+        title: 'Textura Export',
+        shellWidth,
+        contentHtml: exportClone.outerHTML,
       });
-
-      const inlinedHtml = juice(htmlContent.innerHTML, {
-        extraCss: css,
-        applyStyleTags: true,
-        removeStyleTags: false,
-        preserveImportant: true,
-      });
-
-      const fullHtml = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Textura Export</title>
-  <style>
-    body { margin: 0; padding: 20px; background-color: #fff; }
-    img { max-width: 100%; height: auto; }
-  </style>
-</head>
-<body>${inlinedHtml}</body>
-</html>`;
 
       const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -219,115 +303,15 @@ export function TopNav() {
   };
 
   const buildPdfExportMarkup = (previewElement: HTMLElement) => {
-    const clone = previewElement.cloneNode(true) as HTMLElement;
-    clone.id = 'print-area';
-    clone.style.height = 'auto';
-    clone.style.overflow = 'visible';
+    const clone = clonePreviewWithInlineStyles(previewElement);
+    const shellWidth = Math.max(Math.round(previewElement.getBoundingClientRect().width), 320);
 
-    const styles = Array.from(document.querySelectorAll('style'))
-      .map((tag) => tag.innerHTML)
-      .join('\n');
-    const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-      .map((link) => link.outerHTML)
-      .join('\n');
-
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Textura PDF Export</title>
-  ${links}
-  <style>
-    ${styles}
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #ffffff !important;
-    }
-    body {
-      min-height: auto;
-      background-image: none !important;
-    }
-    .print-shell {
-      width: 800px;
-      margin: 0 auto;
-      padding: 24px;
-      box-sizing: border-box;
-      background: #ffffff;
-    }
-    .print-shell img {
-      max-width: 100%;
-      height: auto;
-    }
-    @media print {
-      body * {
-        visibility: visible !important;
-      }
-      .print-shell {
-        width: auto;
-        margin: 0;
-        padding: 0;
-      }
-      #print-area {
-        position: static !important;
-        left: auto !important;
-        top: auto !important;
-        width: auto !important;
-        height: auto !important;
-        overflow: visible !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        z-index: auto !important;
-      }
-      #print-area, #print-area * {
-        visibility: visible !important;
-      }
-    }
-    @page {
-      size: A4;
-      margin: 10mm;
-    }
-  </style>
-</head>
-<body>
-  <div class="print-shell">${clone.outerHTML}</div>
-</body>
-</html>`;
-  };
-
-  const exportPdfViaTauriBrowser = async (markup: string) => {
-    const [{ writeTextFile }, { downloadDir, join }, { open }, { save }] = await Promise.all([
-      import('@tauri-apps/plugin-fs'),
-      import('@tauri-apps/api/path'),
-      import('@tauri-apps/plugin-shell'),
-      import('@tauri-apps/plugin-dialog'),
-    ]);
-
-    const fileName = `textura-print-${new Date().toISOString().split('T')[0]}.html`;
-
-    try {
-      const downloadsPath = await downloadDir();
-      const targetPath = await join(downloadsPath, fileName);
-      await writeTextFile(targetPath, markup);
-      await open(targetPath);
-      return { ok: true, usedSaveDialog: false, cancelled: false };
-    } catch (error) {
-      console.warn('Failed to write printable HTML to downloads:', error);
-    }
-
-    const targetPath = await save({
-      defaultPath: fileName,
-      filters: [{ name: 'HTML', extensions: ['html'] }],
+    return buildStandaloneDocument({
+      title: 'Textura PDF Export',
+      shellWidth,
+      contentHtml: clone.outerHTML,
+      printMode: true,
     });
-
-    if (!targetPath) {
-      return { ok: false, usedSaveDialog: true, cancelled: true };
-    }
-
-    await writeTextFile(targetPath, markup);
-    await open(targetPath);
-    return { ok: true, usedSaveDialog: true, cancelled: false };
   };
 
   const handleExportPdf = async () => {
@@ -339,34 +323,6 @@ export function TopNav() {
 
     const markup = buildPdfExportMarkup(element);
 
-    if (tauriRuntime) {
-      toast.loading('正在准备 PDF 打印文档...', { id: 'pdf-export' });
-
-      try {
-        const result = await exportPdfViaTauriBrowser(markup);
-        toast.dismiss('pdf-export');
-
-        if (!result.ok) {
-          if (!result.cancelled) {
-            toast.error('导出 PDF 失败');
-          }
-          return;
-        }
-
-        toast.success(
-          result.usedSaveDialog
-            ? '已写入可打印 HTML，并在系统浏览器中打开。请使用“打印 / 另存为 PDF”。'
-            : '已在系统浏览器中打开打印文档。请使用“打印 / 另存为 PDF”。'
-        );
-        return;
-      } catch (error) {
-        console.error('Tauri PDF export failed:', error);
-        toast.dismiss('pdf-export');
-        toast.error('桌面端 PDF 导出失败');
-        return;
-      }
-    }
-
     const iframe = document.createElement('iframe');
     iframe.setAttribute('aria-hidden', 'true');
     iframe.style.position = 'fixed';
@@ -377,7 +333,7 @@ export function TopNav() {
     iframe.style.border = '0';
     document.body.appendChild(iframe);
 
-    toast.loading('正在准备打印预览...', { id: 'pdf-export' });
+    toast.loading(tauriRuntime ? '正在打开系统打印窗口...' : '正在准备打印预览...', { id: 'pdf-export' });
 
     try {
       const frameDoc = iframe.contentDocument;
@@ -395,7 +351,7 @@ export function TopNav() {
       }
 
       toast.dismiss('pdf-export');
-      toast.success('已打开打印窗口');
+      toast.success(tauriRuntime ? '已打开系统打印窗口，请选择“保存为 PDF”。' : '已打开打印窗口');
 
       await new Promise<void>((resolve) => {
         let settled = false;
@@ -422,13 +378,17 @@ export function TopNav() {
       console.error('Print export failed:', error);
       toast.dismiss('pdf-export');
 
-      const fallbackWindow = window.open('', '_blank', 'noopener,noreferrer');
-      if (fallbackWindow) {
-        fallbackWindow.document.write(markup);
-        fallbackWindow.document.close();
-        toast.error('系统打印被拦截，已在新标签页打开可打印内容。');
+      if (tauriRuntime) {
+        toast.error('桌面端无法直接调起打印窗口，请重试。');
       } else {
-        toast.error('打开打印窗口失败');
+        const fallbackWindow = window.open('', '_blank', 'noopener,noreferrer');
+        if (fallbackWindow) {
+          fallbackWindow.document.write(markup);
+          fallbackWindow.document.close();
+          toast.error('系统打印被拦截，已在新标签页打开可打印内容。');
+        } else {
+          toast.error('打开打印窗口失败');
+        }
       }
 
       if (iframe.parentNode) {
