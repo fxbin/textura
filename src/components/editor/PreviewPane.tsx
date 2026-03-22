@@ -103,6 +103,8 @@ export function PreviewPane() {
           background-color: #f7f7f7;
           border-radius: 100px;
           border: 1px solid #eee;
+          white-space: nowrap;
+          line-height: 1.4;
         ">
           字数 ${stats.count} <span style="margin: 0 4px; color: #ddd;">|</span> 约 ${stats.time} 分钟
         </span>
@@ -172,10 +174,10 @@ export function PreviewPane() {
                 className="animate-in fade-in slide-in-from-top-2 mt-4 mb-6 flex justify-center select-none print:hidden"
                 title="此统计信息会跟随复制内容一起输出"
               >
-                <div className="inline-flex cursor-help items-center gap-3 rounded-full border border-black/5 bg-black/5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-sm transition-all hover:bg-black/10 dark:border-white/5 dark:bg-white/10 dark:hover:bg-white/15">
-                  <span className="font-mono">字数 {stats.count}</span>
-                  <span className="h-3 w-px bg-border/50" />
-                  <span>约 {stats.time} 分钟</span>
+                <div className="inline-flex max-w-full cursor-help items-center gap-3 whitespace-nowrap rounded-full border border-black/5 bg-black/5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-sm transition-all hover:bg-black/10 dark:border-white/5 dark:bg-white/10 dark:hover:bg-white/15">
+                  <span className="font-mono whitespace-nowrap">字数 {stats.count}</span>
+                  <span className="h-3 w-px shrink-0 bg-border/50" />
+                  <span className="whitespace-nowrap">约 {stats.time} 分钟</span>
                 </div>
               </div>
             )}
