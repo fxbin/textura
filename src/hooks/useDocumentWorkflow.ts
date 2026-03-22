@@ -9,19 +9,29 @@ function getDocumentWindowTitle(name?: string, isDirty?: boolean) {
 
 export function useDocumentWorkflow() {
   const markdown = useEditorStore((state) => state.markdown);
+  const editorHasHydrated = useEditorStore((state) => state._hasHydrated);
   const ensureCurrentDocument = useDocumentStore((state) => state.ensureCurrentDocument);
   const syncCurrentContent = useDocumentStore((state) => state.syncCurrentContent);
+  const documentHasHydrated = useDocumentStore((state) => state._hasHydrated);
   const currentDocumentName = useDocumentStore((state) => state.currentDocument?.name);
   const isDirty = useDocumentStore((state) => state.isDirty);
   const allowCloseRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (!editorHasHydrated || !documentHasHydrated) {
+      return;
+    }
+
     ensureCurrentDocument(markdown);
-  }, [ensureCurrentDocument, markdown]);
+  }, [documentHasHydrated, editorHasHydrated, ensureCurrentDocument, markdown]);
 
   React.useEffect(() => {
+    if (!editorHasHydrated || !documentHasHydrated) {
+      return;
+    }
+
     syncCurrentContent(markdown);
-  }, [markdown, syncCurrentContent]);
+  }, [documentHasHydrated, editorHasHydrated, markdown, syncCurrentContent]);
 
   React.useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

@@ -12,6 +12,8 @@ export interface DocumentSnapshot {
 interface HistoryState {
   snapshots: DocumentSnapshot[];
   maxSnapshots: number;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   addSnapshot: (content: string, label?: string, documentId?: string | null) => void;
   removeSnapshot: (id: string) => void;
   clearSnapshots: (documentId?: string | null) => void;
@@ -23,6 +25,8 @@ export const useHistoryStore = create<HistoryState>()(
     (set, get) => ({
       snapshots: [],
       maxSnapshots: 50,
+      _hasHydrated: false,
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
 
       addSnapshot: (content, label, documentId) =>
         set((state) => {
@@ -65,10 +69,14 @@ export const useHistoryStore = create<HistoryState>()(
     }),
     {
       name: 'textura-history',
+      skipHydration: true,
       partialize: (state) => ({
         snapshots: state.snapshots,
         maxSnapshots: state.maxSnapshots,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

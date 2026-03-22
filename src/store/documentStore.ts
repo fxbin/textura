@@ -21,6 +21,8 @@ interface DocumentState {
   recentDocuments: DocumentRecord[];
   currentDocument: DocumentRecord | null;
   isDirty: boolean;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   ensureCurrentDocument: (content: string) => void;
   openDocumentSession: (payload: {
     id?: string;
@@ -108,6 +110,8 @@ export const useDocumentStore = create<DocumentState>()(
       recentDocuments: [],
       currentDocument: null,
       isDirty: false,
+      _hasHydrated: false,
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
 
       ensureCurrentDocument: (content) =>
         set((state) => {
@@ -199,11 +203,15 @@ export const useDocumentStore = create<DocumentState>()(
     }),
     {
       name: 'textura-documents',
+      skipHydration: true,
       partialize: (state) => ({
         recentDocuments: state.recentDocuments,
         currentDocument: state.currentDocument,
         isDirty: state.isDirty,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

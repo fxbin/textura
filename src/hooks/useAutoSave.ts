@@ -5,8 +5,15 @@ import { useHistoryStore } from '@/store/historyStore';
 
 export function useAutoSave(intervalMs: number = 300000) {
   const isEnabled = useRef(true);
+  const editorHasHydrated = useEditorStore((state) => state._hasHydrated);
+  const documentHasHydrated = useDocumentStore((state) => state._hasHydrated);
+  const historyHasHydrated = useHistoryStore((state) => state._hasHydrated);
 
   useEffect(() => {
+    if (!editorHasHydrated || !documentHasHydrated || !historyHasHydrated) {
+      return;
+    }
+
     const timer = setInterval(() => {
       if (!isEnabled.current) {
         return;
@@ -31,7 +38,7 @@ export function useAutoSave(intervalMs: number = 300000) {
     }, intervalMs);
 
     return () => clearInterval(timer);
-  }, [intervalMs]);
+  }, [documentHasHydrated, editorHasHydrated, historyHasHydrated, intervalMs]);
 
   return {
     disable: () => {
