@@ -5,18 +5,28 @@ import { extraThemes } from './extra';
 import { mdMainThemes } from './md-main';
 import { redAccentThemes } from './red-accent';
 import { blueAccentThemes, greenAccentThemes, purpleAccentThemes, orangeAccentThemes } from './color-variants';
+import { withResolvedThemePreviews } from './preview';
 
 export type { Theme };
-export const THEMES: Theme[] = [
-  ...classicThemes, 
-  ...redAccentThemes, 
-  ...blueAccentThemes, 
-  ...greenAccentThemes, 
-  ...purpleAccentThemes, 
+
+const classicGroupThemes = withResolvedThemePreviews([
+  ...classicThemes,
+  ...redAccentThemes,
+  ...blueAccentThemes,
+  ...greenAccentThemes,
+  ...purpleAccentThemes,
   ...orangeAccentThemes,
-  ...modernThemes, 
-  ...extraThemes, 
-  ...mdMainThemes
+]);
+
+const modernGroupThemes = withResolvedThemePreviews(modernThemes);
+const extraGroupThemes = withResolvedThemePreviews(extraThemes);
+const mdGroupThemes = withResolvedThemePreviews(mdMainThemes);
+
+export const THEMES: Theme[] = [
+  ...classicGroupThemes,
+  ...modernGroupThemes,
+  ...extraGroupThemes,
+  ...mdGroupThemes,
 ];
 
 export interface ThemeGroup {
@@ -25,8 +35,8 @@ export interface ThemeGroup {
 }
 
 export const THEME_GROUPS: ThemeGroup[] = [
-  { label: '经典', themes: [...classicThemes, ...redAccentThemes, ...blueAccentThemes, ...greenAccentThemes, ...purpleAccentThemes, ...orangeAccentThemes] },
-  { label: '潮流', themes: modernThemes },
-  { label: 'MD 系列', themes: mdMainThemes },
-  { label: '更多风格', themes: extraThemes },
+  { label: '经典', themes: classicGroupThemes },
+  { label: '潮流', themes: modernGroupThemes },
+  { label: 'MD 系列', themes: mdGroupThemes },
+  { label: '更多风格', themes: extraGroupThemes },
 ];

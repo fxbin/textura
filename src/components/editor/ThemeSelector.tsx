@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
 import { THEME_GROUPS } from '@/lib/themes/index';
+import type { ThemePreview } from '@/lib/themes/types';
+import { buildThemePreview } from '@/lib/themes/preview';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Check, Trash2, Save, X } from 'lucide-react';
@@ -92,25 +94,6 @@ export function ThemeSelector() {
     }
   };
 
-  /** Extract a css property value from an inline style string */
-  const extractStyle = (styleStr: string, prop: string): string | null => {
-    const regex = new RegExp(`${prop}\\s*:\\s*([^;!]+)`, 'i');
-    const match = styleStr.match(regex);
-    return match ? match[1].trim() : null;
-  };
-
-  const extractColorFromShorthand = (styleStr: string, prop: string): string | null => {
-    const value = extractStyle(styleStr, prop);
-    if (!value) {
-      return null;
-    }
-
-    const colorMatch = value.match(/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]{3,8})/);
-    return colorMatch ? colorMatch[1] : null;
-  };
-
-  const firstNonNull = (...values: Array<string | null>) => values.find(Boolean) || null;
-
   const parseCssToStyles = (css: string): Record<string, string> => {
     const styles: Record<string, string> = {};
 
@@ -148,56 +131,24 @@ export function ThemeSelector() {
     return styles;
   };
 
-  const renderThemeSwatch = (styles: Record<string, string>) => {
-    const bg = firstNonNull(
-      extractStyle(styles.container || '', 'background-color'),
-      extractStyle(styles.blockquote || '', 'background-color'),
-      extractStyle(styles.pre || '', 'background-color'),
-      '#fff'
-    )!;
-
-    const textColor = firstNonNull(
-      extractStyle(styles.p || '', 'color'),
-      extractStyle(styles.container || '', 'color'),
-      extractStyle(styles.li || '', 'color'),
-      '#333'
-    )!;
-
-    const headingColor = firstNonNull(
-      extractStyle(styles.h1 || '', 'color'),
-      extractStyle(styles.h2 || '', 'color'),
-      extractStyle(styles.h3 || '', 'color'),
-      textColor
-    )!;
-
-    const accentColor = firstNonNull(
-      extractStyle(styles.a || '', 'color'),
-      extractStyle(styles.strong || '', 'color'),
-      extractColorFromShorthand(styles.h2 || '', 'border-left'),
-      extractColorFromShorthand(styles.h1 || '', 'border-bottom'),
-      extractColorFromShorthand(styles.h3 || '', 'border-left'),
-      extractColorFromShorthand(styles.blockquote || '', 'border-left'),
-      extractStyle(styles.blockquote || '', 'border-left-color'),
-      headingColor
-    )!;
-
+  const renderThemeSwatch = (preview: ThemePreview) => {
     return (
-      <div className="w-full h-full flex flex-col p-3 gap-2" style={{ backgroundColor: bg }}>
+      <div className="w-full h-full flex flex-col p-3 gap-2" style={{ backgroundColor: preview.background }}>
         {/* Title Line (H1) */}
-        <div className="w-3/4 h-2.5 rounded-sm" style={{ backgroundColor: headingColor, opacity: 0.9 }} />
+        <div className="w-3/4 h-2.5 rounded-sm" style={{ backgroundColor: preview.heading, opacity: 0.9 }} />
 
         {/* Secondary Line (H2) */}
-        <div className="w-1/2 h-2 rounded-sm" style={{ backgroundColor: headingColor, opacity: 0.7 }} />
+        <div className="w-1/2 h-2 rounded-sm" style={{ backgroundColor: preview.heading, opacity: 0.7 }} />
 
         {/* Body Lines (P) */}
         <div className="flex flex-col gap-1.5 mt-1">
-          <div className="w-full h-1.5 rounded-sm" style={{ backgroundColor: textColor, opacity: 0.6 }} />
-          <div className="w-11/12 h-1.5 rounded-sm" style={{ backgroundColor: textColor, opacity: 0.6 }} />
-          <div className="w-full h-1.5 rounded-sm" style={{ backgroundColor: textColor, opacity: 0.6 }} />
+          <div className="w-full h-1.5 rounded-sm" style={{ backgroundColor: preview.text, opacity: 0.6 }} />
+          <div className="w-11/12 h-1.5 rounded-sm" style={{ backgroundColor: preview.text, opacity: 0.6 }} />
+          <div className="w-full h-1.5 rounded-sm" style={{ backgroundColor: preview.text, opacity: 0.6 }} />
         </div>
 
         {/* Accent/Link Line */}
-        <div className="w-1/3 h-1.5 rounded-sm mt-1" style={{ backgroundColor: accentColor }} />
+        <div className="w-1/3 h-1.5 rounded-sm mt-1" style={{ backgroundColor: preview.accent }} />
       </div>
     );
   };
@@ -232,7 +183,7 @@ export function ThemeSelector() {
                           : "border-transparent hover:border-border/80"
                       )}
                     >
-                      {renderThemeSwatch(parseCssToStyles(t.css || ''))}
+                      {renderThemeSwatch(buildThemePreview(parseCssToStyles(t.css || '')))}
                       {theme === t.id && (
                         <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
                           <div className="bg-primary text-primary-foreground rounded-full p-1 shadow-sm">
@@ -350,7 +301,7 @@ export function ThemeSelector() {
                           : "border-border/40 hover:border-border"
                       )}
                     >
-                      {renderThemeSwatch(t.styles)}
+                      {renderThemeSwatch(t.preview ?? buildThemePreview(t.styles))}
 
                       {theme === t.id && (
                         <div className="absolute inset-0 bg-black/5 dark:bg-white/10 flex items-center justify-center backdrop-blur-[1px]">
