@@ -34,8 +34,8 @@ import { copyRichContent } from '@/lib/clipboard';
 import { makeWeChatCompatible } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
 import { ThemeSelector } from '@/components/editor/ThemeSelector';
+import { useTauriRuntime } from '@/hooks/useTauriRuntime';
 import {
-  isTauriRuntime,
   openDocumentFromFile,
   openRecentDocument,
   saveDocumentToFile,
@@ -91,7 +91,7 @@ export function TopNav() {
   const isDirty = useDocumentStore((state) => state.isDirty);
   const openDocumentSession = useDocumentStore((state) => state.openDocumentSession);
   const markCurrentDocumentSaved = useDocumentStore((state) => state.markCurrentDocumentSaved);
-  const tauriRuntime = React.useMemo(() => isTauriRuntime(), []);
+  const tauriRuntime = useTauriRuntime();
 
   const currentDocumentName = currentDocument?.name || '未命名文档.md';
   const currentDocumentMeta = formatDocumentMeta(currentDocument?.path, currentDocument?.source, currentDocument?.lastSavedAt);

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as mammoth from 'mammoth';
+import { isTauri } from '@tauri-apps/api/core';
 
 export type DocumentSource = 'untitled' | 'file' | 'example' | 'recovery';
 
@@ -208,7 +209,15 @@ export const useDocumentStore = create<DocumentState>()(
 );
 
 export function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return isTauri();
+  } catch {
+    return false;
+  }
 }
 
 function getFileName(path: string): string {

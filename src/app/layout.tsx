@@ -17,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body
+        suppressHydrationWarning
         className="antialiased h-screen w-screen overflow-hidden"
       >
         <ThemeProvider

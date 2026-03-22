@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { Clock3, FileClock, FileSearch, HardDriveDownload, MonitorSmartphone } from 'lucide-react';
-import { isTauriRuntime, useDocumentStore } from '@/store/documentStore';
+import { useTauriRuntime } from '@/hooks/useTauriRuntime';
+import { useDocumentStore } from '@/store/documentStore';
 
 function formatSourceLabel(source?: string) {
   switch (source) {
@@ -34,7 +35,7 @@ export function DocumentDetailBar() {
   const currentDocument = useDocumentStore((state) => state.currentDocument);
   const recentDocumentsCount = useDocumentStore((state) => state.recentDocuments.length);
   const isDirty = useDocumentStore((state) => state.isDirty);
-  const tauriRuntime = React.useMemo(() => isTauriRuntime(), []);
+  const tauriRuntime = useTauriRuntime();
 
   return (
     <section className="z-20 border-b border-border/50 bg-background/70 px-4 py-2.5 backdrop-blur-md">
