@@ -52,4 +52,4 @@ jobs:
             - 历史快照与恢复为本地单机能力
             - 当前发布流程主要覆盖 Windows / macOS
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
