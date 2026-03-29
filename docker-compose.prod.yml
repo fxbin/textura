@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
-  # Next.js Application Service
+  # Static Web Application Service
   textura:
-    # 生产环境使用预构建镜像
+    # 生产环境使用预构建静态站点镜像
     # 请将此处的 image 替换为您实际构建/推送的镜像名称
     # 例如: ghcr.io/your-username/textura:latest
     image: textura:latest 

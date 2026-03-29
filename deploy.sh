@@ -32,4 +32,4 @@ echo "🧹 Cleaning up unused images..."
 docker image prune -f
 
 echo "✅ Deployment successful!"
-echo "🌐 Access the application at http://localhost:3000"
+echo "🌐 Access the application at http://localhost"
