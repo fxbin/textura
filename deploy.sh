@@ -3,7 +3,14 @@
 # Stop execution on error
 set -e
 
+COMPOSE_FILE="${1:-docker-compose.yml}"
+
 echo "🚀 Starting Textura deployment..."
+
+if [ ! -f "$COMPOSE_FILE" ]; then
+    echo "❌ Error: Compose file '$COMPOSE_FILE' does not exist."
+    exit 1
+fi
 
 # Check required tools
 if ! command -v docker &> /dev/null; then
@@ -22,11 +29,10 @@ else
     COMPOSE_CMD="docker-compose"
 fi
 
-echo "📦 Building Docker image..."
-$COMPOSE_CMD build
+echo "🧾 Using compose file: $COMPOSE_FILE"
 
-echo "sc Starting services..."
-$COMPOSE_CMD up -d
+echo "📦 Building and starting services..."
+$COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build
 
 echo "🧹 Cleaning up unused images..."
 docker image prune -f

@@ -1,14 +1,16 @@
 
 node_modules
 .next
+out
 .git
-.gitignore
-.dockerignore
-Dockerfile
-docker-compose.yml
-README.md
-LICENSE
 src-tauri
+dist
+release
+
 npm-debug.log
 yarn-error.log
 .DS_Store
+*.log
+.env*
+*.local
+tsconfig.tsbuildinfo
