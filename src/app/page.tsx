@@ -5,6 +5,7 @@ import { DocumentDetailBar } from '@/components/layout/DocumentDetailBar';
 import { PreviewPane } from '@/components/editor/PreviewPane';
 import { RecoveryBanner } from '@/components/layout/RecoveryBanner';
 import { TopNav } from '@/components/layout/TopNav';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -33,11 +34,15 @@ export default function Home() {
       <div className="flex-1 min-h-0 z-10">
         <ResizablePanelGroup orientation="horizontal" className="h-full">
           <ResizablePanel defaultSize={40} minSize={20} className="h-full">
-            <EditorPane />
+            <ErrorBoundary label="编辑器">
+              <EditorPane />
+            </ErrorBoundary>
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={60} minSize={30} className="h-full">
-            <PreviewPane />
+            <ErrorBoundary label="预览区">
+              <PreviewPane />
+            </ErrorBoundary>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
