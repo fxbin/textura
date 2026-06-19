@@ -6,6 +6,7 @@ import {
   BarChart2,
   Bold,
   Bot,
+  Braces,
   Code,
   Image as ImageIcon,
   Italic,
@@ -14,8 +15,11 @@ import {
   Link as LinkIcon,
   List,
   ListOrdered,
+  Minus,
   Quote,
   Redo2,
+  Strikethrough,
+  Table2,
   Undo2,
   Unlink,
   Wand2,
@@ -308,12 +312,18 @@ export function EditorPane() {
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('*', '*', '斜体')} title="斜体">
             <Italic className="h-4 w-4" />
           </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('~~', '~~', '删除线')} title="删除线">
+            <Strikethrough className="h-4 w-4" />
+          </Button>
           <div className="mx-1 h-4 w-px bg-border" />
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={insertBlockquote} title="引用">
             <Quote className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('```\n', '\n```', '代码块')} title="代码块">
             <Code className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('`', '`', 'code')} title="行内代码">
+            <Braces className="h-4 w-4" />
           </Button>
           <div className="mx-1 h-4 w-px bg-border" />
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => insertFormat('[', '](url)', '链接')} title="链接">
@@ -338,6 +348,25 @@ export function EditorPane() {
             title="插入流程图"
           >
             <Workflow className="h-4 w-4" />
+          </Button>
+          <div className="mx-1 h-4 w-px bg-border" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => insertFormat('\n| 列1 | 列2 | 列3 |\n| :--- | :---: | ---: |\n| 内容 | 内容 | 内容 |\n| 内容 | 内容 | 内容 |\n', '\n', '')}
+            title="插入表格"
+          >
+            <Table2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => insertFormat('\n---\n', '\n', '')}
+            title="分割线"
+          >
+            <Minus className="h-4 w-4" />
           </Button>
         </div>
 
