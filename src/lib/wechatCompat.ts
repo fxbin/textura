@@ -299,3 +299,80 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
 
     return outputHtml;
 }
+
+/**
+ * Convert all <a> hyperlinks in the HTML to footnote-style references.
+ * WeChat strips <a> tags on paste, silently losing URLs.
+ * This function replaces each link with its visible text + a superscript
+ * number, and appends a "引用链接" section listing all URLs as plain text.
+ *
+ * Safe to call on any HTML — if no links are found, the input is returned
+ * unchanged.
+ */
+export function convertLinksToFootnotes(html: string): string {
+    if (typeof window === 'undefined') return html;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    const collectedLinks: { text: string; url: string }[] = [];
+
+    anchors.forEach(a => {
+        if (a.closest('pre, code')) return;
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+
+        const linkText = a.textContent?.trim() || '';
+        if (!linkText) return;
+
+        collectedLinks.push({ text: linkText, url: href });
+        const refIndex = collectedLinks.length;
+
+        const span = doc.createElement('span');
+        const aStyle = a.getAttribute('style') || '';
+        const colorMatch = aStyle.match(/color\s*:\s*[^;]+;?/);
+        if (colorMatch) span.setAttribute('style', colorMatch[0]);
+        span.textContent = linkText;
+
+        const sup = doc.createElement('sup');
+        sup.setAttribute(
+            'style',
+            'font-size: 0.75em; color: #888; margin-left: 1px; vertical-align: super;'
+        );
+        sup.textContent = `[${refIndex}]`;
+
+        const wrapper = doc.createElement('span');
+        wrapper.appendChild(span);
+        wrapper.appendChild(sup);
+        a.parentNode?.replaceChild(wrapper, a);
+    });
+
+    if (collectedLinks.length === 0) return html;
+
+    const refSection = doc.createElement('section');
+    refSection.setAttribute(
+        'style',
+        'margin-top: 24px; padding-top: 12px; border-top: 1px solid #eee; font-size: 12px; color: #888; line-height: 1.8;'
+    );
+
+    const refTitle = doc.createElement('p');
+    refTitle.setAttribute(
+        'style',
+        'font-size: 13px; font-weight: bold; color: #666; margin: 0 0 8px;'
+    );
+    refTitle.textContent = '引用链接';
+    refSection.appendChild(refTitle);
+
+    collectedLinks.forEach((link, i) => {
+        const item = doc.createElement('p');
+        item.setAttribute(
+            'style',
+            'margin: 2px 0; font-size: 12px; color: #888; word-break: break-all;'
+        );
+        item.textContent = `[${i + 1}] ${link.text}: ${link.url}`;
+        refSection.appendChild(item);
+    });
+
+    doc.body.appendChild(refSection);
+    return doc.body.innerHTML;
+}

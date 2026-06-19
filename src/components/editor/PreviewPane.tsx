@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import { useEditorStore } from '@/store/useEditorStore';
 import { THEMES } from '@/lib/themes/index';
 import { md, applyTheme } from '@/lib/markdown';
-import { makeWeChatCompatible } from '@/lib/wechatCompat';
+import { makeWeChatCompatible, convertLinksToFootnotes } from '@/lib/wechatCompat';
 import { copyRichContent } from '@/lib/clipboard';
 import { cn, calculateWordCount } from '@/lib/utils';
 import 'heti/umd/heti.min.css';
@@ -126,7 +126,9 @@ export function PreviewPane() {
           return;
         }
 
-        contentToCopy = `<style>${customThemeCss}</style>${previewHtml}`;
+        contentToCopy = convertLinksToFootnotes(
+          `<style>${customThemeCss}</style>${previewHtml}`
+        );
       }
 
       if (statsHtml) {

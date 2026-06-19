@@ -30,7 +30,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { copyRichContent } from '@/lib/clipboard';
-import { makeWeChatCompatible } from '@/lib/wechatCompat';
+import { makeWeChatCompatible, convertLinksToFootnotes } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
 import { ThemeSelector } from '@/components/editor/ThemeSelector';
 import { useTauriRuntime } from '@/hooks/useTauriRuntime';
@@ -463,7 +463,7 @@ export function TopNav() {
       const presetTheme = theme !== 'custom' && !savedThemes.some((item) => item.id === theme);
       const html = presetTheme
         ? await makeWeChatCompatible(previewElement.innerHTML, theme)
-        : `<style>${customThemeCss}</style>${previewElement.innerHTML}`;
+        : convertLinksToFootnotes(`<style>${customThemeCss}</style>${previewElement.innerHTML}`);
 
       const result = await copyRichContent(html, markdown);
       if (!result.ok) {
