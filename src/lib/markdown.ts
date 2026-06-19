@@ -4,7 +4,7 @@ import { THEMES } from './themes';
 
 export const md = new MarkdownIt({
     html: true,
-    linkify: true,
+    linkify: false,
     typographer: false,
     highlight: function (str: string, lang: string) {
         let codeContent = '';
