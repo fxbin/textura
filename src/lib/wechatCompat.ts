@@ -142,6 +142,41 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
         node.setAttribute('style', currentStyle.trim());
     });
 
+    // 4.5 Normalize spacing for Latin-heavy text blocks.
+    // Positive letter-spacing (e.g. 0.2em) designed for CJK readability causes
+    // visibly excessive gaps in English text because it applies after every
+    // character *including* space characters. Combined with word-spacing and
+    // text-align:justify the effect compounds dramatically in WeChat's editor.
+    // Strip these properties when the Latin character ratio exceeds a threshold.
+    const LATIN_RATIO_THRESHOLD = 0.3;
+    const stripSpacing = (style: string): string =>
+        style
+            .replace(/letter-spacing\s*:\s*[^;]+;?/g, '')
+            .replace(/word-spacing\s*:\s*[^;]+;?/g, '')
+            .replace(/;\s*;/g, ';')
+            .trim();
+
+    const spacingBlocks = section.querySelectorAll('p, li, blockquote');
+    spacingBlocks.forEach(node => {
+        const text = node.textContent || '';
+        if (!text) return;
+        const latinChars = (text.match(/[A-Za-z0-9]/g) || []).length;
+        const ratio = latinChars / text.length;
+        if (ratio <= LATIN_RATIO_THRESHOLD) return;
+
+        // Reset spacing on the block element itself
+        let currentStyle = node.getAttribute('style') || '';
+        node.setAttribute('style', stripSpacing(currentStyle));
+
+        // Also reset spacing on inline children that may carry their own values
+        node.querySelectorAll('em, strong, b, i, span, a').forEach(child => {
+            const childStyle = child.getAttribute('style') || '';
+            if (childStyle) {
+                child.setAttribute('style', stripSpacing(childStyle));
+            }
+        });
+    });
+
     // Keep CJK punctuation attached to preceding inline emphasis in WeChat.
     // Example: <strong>标题</strong>：说明 -> <strong>标题：</strong>说明
     const inlineNodes = section.querySelectorAll('strong, b, em, span, a, code');
@@ -162,7 +197,74 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
         }
     });
 
-    // 5. Convert all images to Base64 for safe WeChat pasting
+    // 5. Convert hyperlinks to footnote references.
+    // WeChat strips <a> tags on paste, silently losing URLs.
+    // Replace each link with its visible text + superscript number,
+    // then append a "引用链接" section listing all URLs.
+    const anchors = Array.from(section.querySelectorAll('a'));
+    const collectedLinks: { text: string; url: string }[] = [];
+
+    anchors.forEach(a => {
+        if (a.closest('pre, code')) return;
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+
+        const linkText = a.textContent?.trim() || '';
+        if (!linkText) return;
+
+        collectedLinks.push({ text: linkText, url: href });
+        const refIndex = collectedLinks.length;
+
+        const span = doc.createElement('span');
+        const aStyle = a.getAttribute('style') || '';
+        // Keep the link's text color but strip border-bottom so it doesn't
+        // look like a broken hyperlink in WeChat.
+        const colorMatch = aStyle.match(/color\s*:\s*[^;]+;?/);
+        if (colorMatch) span.setAttribute('style', colorMatch[0]);
+        span.textContent = linkText;
+
+        const sup = doc.createElement('sup');
+        sup.setAttribute(
+            'style',
+            'font-size: 0.75em; color: #888; margin-left: 1px; vertical-align: super;'
+        );
+        sup.textContent = `[${refIndex}]`;
+
+        const wrapper = doc.createElement('span');
+        wrapper.appendChild(span);
+        wrapper.appendChild(sup);
+        a.parentNode?.replaceChild(wrapper, a);
+    });
+
+    if (collectedLinks.length > 0) {
+        const refSection = doc.createElement('section');
+        refSection.setAttribute(
+            'style',
+            'margin-top: 24px; padding-top: 12px; border-top: 1px solid #eee; font-size: 12px; color: #888; line-height: 1.8;'
+        );
+
+        const refTitle = doc.createElement('p');
+        refTitle.setAttribute(
+            'style',
+            'font-size: 13px; font-weight: bold; color: #666; margin: 0 0 8px;'
+        );
+        refTitle.textContent = '引用链接';
+        refSection.appendChild(refTitle);
+
+        collectedLinks.forEach((link, i) => {
+            const item = doc.createElement('p');
+            item.setAttribute(
+                'style',
+                'margin: 2px 0; font-size: 12px; color: #888; word-break: break-all;'
+            );
+            item.textContent = `[${i + 1}] ${link.text}: ${link.url}`;
+            refSection.appendChild(item);
+        });
+
+        section.appendChild(refSection);
+    }
+
+    // 6. Convert all images to Base64 for safe WeChat pasting
     const imgs = Array.from(section.querySelectorAll('img'));
     await Promise.all(imgs.map(async img => {
         const src = img.getAttribute('src');
