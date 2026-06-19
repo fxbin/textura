@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { useEditorStore } from '@/store/useEditorStore';
 import { THEMES } from '@/lib/themes/index';
 import { md, applyTheme } from '@/lib/markdown';
+import { resolveImagePaths } from '@/lib/imageResolver';
 import { makeWeChatCompatible, convertLinksToFootnotes } from '@/lib/wechatCompat';
 import { copyRichContent } from '@/lib/clipboard';
 import { cn, calculateWordCount } from '@/lib/utils';
@@ -43,6 +44,7 @@ export function PreviewPane() {
     customThemeCss,
     isStatsVisible,
     isHetiEnabled,
+    imageBasePath,
     registerPreviewScroller,
   } = useEditorStore();
   const [mounted, setMounted] = React.useState(false);
@@ -66,14 +68,15 @@ export function PreviewPane() {
       }
 
       const rawHtml = md.render(deferredMarkdown);
-      const themedHtml = applyTheme(rawHtml, theme, fontSize);
+      const resolvedHtml = resolveImagePaths(rawHtml, imageBasePath);
+      const themedHtml = applyTheme(resolvedHtml, theme, fontSize);
       const styledHtml = await renderMermaidInHtml(themedHtml);
 
       setHtmlContent(styledHtml);
     };
 
     processContent();
-  }, [deferredMarkdown, theme, fontSize, isPresetTheme]);
+  }, [deferredMarkdown, theme, fontSize, isPresetTheme, imageBasePath]);
 
   const stats = React.useMemo(() => {
     const { charCount, readTime } = calculateWordCount(deferredMarkdown);

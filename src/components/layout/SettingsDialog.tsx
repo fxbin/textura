@@ -54,6 +54,8 @@ export function SettingsDialog() {
     toggleStats,
     isHetiEnabled,
     toggleHeti,
+    imageBasePath,
+    setImageBasePath,
     theme,
     savedThemes,
   } = useEditorStore();
@@ -176,6 +178,19 @@ export function SettingsDialog() {
                     </div>
                     <Switch checked={isHetiEnabled} onCheckedChange={toggleHeti} />
                   </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="image-base-path">图片基础路径</Label>
+                  <Input
+                    id="image-base-path"
+                    value={imageBasePath}
+                    onChange={(e) => setImageBasePath(e.target.value)}
+                    placeholder="例如: https://cdn.example.com/images 或 /Users/name/project/"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Markdown 中的相对图片路径（如 <code className="rounded bg-muted px-1">./images/photo.png</code>）会拼接此路径进行解析。从 VS Code 等编辑器粘贴内容时，设置此路径即可正常预览本地图片。
+                  </p>
                 </div>
               </CardContent>
             </Card>
