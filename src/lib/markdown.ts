@@ -26,18 +26,6 @@ export const md = new MarkdownIt({
     }
 });
 
-// Avoid bold fragmentation when pasting from certain apps
-export function preprocessMarkdown(content: string) {
-    if (!content) return '';
-    content = content.replace(/^[ ]{0,3}(\*[ ]*\*[ ]*\*[\* ]*)[ \t]*$/gm, '***');
-    content = content.replace(/^[ ]{0,3}(-[ ]*-[ ]*-[- ]*)[ \t]*$/gm, '---');
-    content = content.replace(/^[ ]{0,3}(_[ ]*_[ ]*_[_ ]*)[ \t]*$/gm, '___');
-    content = content.replace(/\*\*\s+\*\*/g, ' ');
-    content = content.replace(/\*{4,}/g, '');
-    content = content.replace(/\*\*([）」』》〉】〕〗］｝"'。，、；？！])/g, '**\u200B$1');
-    content = content.replace(/([（「『《〈【〔〖［｛"'])\*\*/g, '$1\u200B**');
-    return content;
-}
 
 export function applyTheme(html: string, themeId: string, fontSize?: number) {
     // In SSR environment, DOMParser might not be available.
