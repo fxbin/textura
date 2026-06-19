@@ -4,17 +4,41 @@ const DB_NAME = 'textura-db';
 const STORE_NAME = 'editor-state';
 const DB_VERSION = 1;
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
-      reject(new Error('IndexedDB is not available in this environment'));
-      return;
-    }
+let dbInstance: IDBDatabase | null = null;
+let dbPromise: Promise<IDBDatabase> | null = null;
 
+function openDB(): Promise<IDBDatabase> {
+  // Return cached connection if still open
+  if (dbInstance) return Promise.resolve(dbInstance);
+  // Return in-flight promise if a connection is being opened
+  if (dbPromise) return dbPromise;
+
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('IndexedDB is not available in this environment'));
+  }
+
+  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      dbInstance = db;
+      // Reset cache when the connection is unexpectedly closed
+      db.onclose = () => {
+        dbInstance = null;
+        dbPromise = null;
+      };
+      db.onversionchange = () => {
+        db.close();
+        dbInstance = null;
+        dbPromise = null;
+      };
+      resolve(db);
+    };
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -23,6 +47,8 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
   });
+
+  return dbPromise;
 }
 
 export const indexedDBStorage: PersistStorage<unknown> = {

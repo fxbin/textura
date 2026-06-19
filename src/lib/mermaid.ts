@@ -30,7 +30,14 @@ function ensureMermaidInitialized() {
 
 export async function renderMermaidSvg(chart: string, id: string) {
   ensureMermaidInitialized();
-  return mermaid.render(id, normalizeMermaidDefinition(chart));
+  const MERMAID_TIMEOUT = 5000;
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Mermaid 渲染超时（5s），请检查图表语法')), MERMAID_TIMEOUT)
+  );
+  return Promise.race([
+    mermaid.render(id, normalizeMermaidDefinition(chart)),
+    timeoutPromise,
+  ]);
 }
 
 export async function renderMermaidInHtml(html: string) {

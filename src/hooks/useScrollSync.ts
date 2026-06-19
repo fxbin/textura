@@ -3,7 +3,8 @@ import { useEditorStore } from '@/store/useEditorStore';
 
 export function useScrollSync() {
   const { editorRef, previewRef, isScrollSyncEnabled } = useEditorStore((state) => state);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isSyncingRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isScrollSyncEnabled || !editorRef || !previewRef) {
@@ -13,64 +14,48 @@ export function useScrollSync() {
     const editor = editorRef;
     const preview = previewRef;
 
-    const scrollCB = (sourceName: 'editor' | 'preview') => {
-      let source: HTMLElement | null;
-      let target: HTMLElement | null;
-
-      // Clear any pending re-attach timeout
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-
-      if (sourceName === 'preview') {
-        source = preview;
-        target = editor;
-        
-        // Remove target listener to prevent feedback loop
-        target.removeEventListener('scroll', handleEditorScroll);
-        
-        // Re-attach after delay
-        timeoutRef.current = setTimeout(() => {
-          target?.addEventListener('scroll', handleEditorScroll);
-        }, 300);
-      } else {
-        source = editor;
-        target = preview;
-        
-        // Remove target listener
-        target.removeEventListener('scroll', handlePreviewScroll);
-        
-        // Re-attach after delay
-        timeoutRef.current = setTimeout(() => {
-          target?.addEventListener('scroll', handlePreviewScroll);
-        }, 300);
-      }
-
-      if (!source || !target) return;
+    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
+      if (isSyncingRef.current) return;
+      isSyncingRef.current = true;
 
       const sourceHeight = source.scrollHeight - source.offsetHeight;
       const targetHeight = target.scrollHeight - target.offsetHeight;
 
-      if (sourceHeight <= 0 || targetHeight <= 0) return;
+      if (sourceHeight <= 0 || targetHeight <= 0) {
+        isSyncingRef.current = false;
+        return;
+      }
 
       const percentage = source.scrollTop / sourceHeight;
       const targetScrollTop = percentage * targetHeight;
 
-      target.scrollTo({ top: targetScrollTop, behavior: 'auto' });
+      target.scrollTop = targetScrollTop;
+
+      // Release the lock after the next frame so the target's
+      // own scroll event (triggered by the programmatic scroll)
+      // is ignored, preventing feedback loops.
+      requestAnimationFrame(() => {
+        isSyncingRef.current = false;
+      });
     };
 
-    const handleEditorScroll = () => scrollCB('editor');
-    const handlePreviewScroll = () => scrollCB('preview');
+    const handleEditorScroll = () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = requestAnimationFrame(() => syncScroll(editor, preview));
+    };
 
-    editor.addEventListener('scroll', handleEditorScroll);
-    preview.addEventListener('scroll', handlePreviewScroll);
+    const handlePreviewScroll = () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = requestAnimationFrame(() => syncScroll(preview, editor));
+    };
+
+    editor.addEventListener('scroll', handleEditorScroll, { passive: true });
+    preview.addEventListener('scroll', handlePreviewScroll, { passive: true });
 
     return () => {
       editor.removeEventListener('scroll', handleEditorScroll);
       preview.removeEventListener('scroll', handlePreviewScroll);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
   }, [editorRef, previewRef, isScrollSyncEnabled]);
 }

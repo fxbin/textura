@@ -1,20 +1,31 @@
 import { THEMES } from './themes';
 
-// Helper to convert images to Base64
+// Helper to convert images to Base64 with a 10-second timeout
 async function getBase64Image(imgUrl: string): Promise<string> {
     try {
         if (imgUrl.startsWith('data:')) return imgUrl;
 
-        const response = await fetch(imgUrl, { mode: 'cors', cache: 'default' });
-        if (!response.ok) return imgUrl;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
-        const blob = await response.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = () => resolve(imgUrl);
-            reader.readAsDataURL(blob);
-        });
+        try {
+            const response = await fetch(imgUrl, {
+                mode: 'cors', cache: 'default', signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            if (!response.ok) return imgUrl;
+
+            const blob = await response.blob();
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = () => resolve(imgUrl);
+                reader.readAsDataURL(blob);
+            });
+        } catch {
+            clearTimeout(timeoutId);
+            return imgUrl;
+        }
     } catch {
         return imgUrl;
     }
@@ -264,15 +275,19 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
         section.appendChild(refSection);
     }
 
-    // 6. Convert all images to Base64 for safe WeChat pasting
+    // 6. Convert all images to Base64 (batched, max 3 concurrent to respect browser limits)
     const imgs = Array.from(section.querySelectorAll('img'));
-    await Promise.all(imgs.map(async img => {
-        const src = img.getAttribute('src');
-        if (src && !src.startsWith('data:')) {
-            const base64 = await getBase64Image(src);
-            img.setAttribute('src', base64);
-        }
-    }));
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < imgs.length; i += BATCH_SIZE) {
+        const batch = imgs.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async img => {
+            const src = img.getAttribute('src');
+            if (src && !src.startsWith('data:')) {
+                const base64 = await getBase64Image(src);
+                img.setAttribute('src', base64);
+            }
+        }));
+    }
 
     doc.body.innerHTML = '';
     doc.body.appendChild(section);
