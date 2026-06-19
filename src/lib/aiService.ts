@@ -21,6 +21,81 @@ interface AiResponse {
   error?: string;
 }
 
+// ── Shared utilities ──
+
+const AI_FETCH_TIMEOUT = 60_000;       // 60s for initial connection
+const AI_CHUNK_TIMEOUT = 30_000;       // 30s between stream chunks
+const MAX_CONSECUTIVE_PARSE_ERRORS = 10;
+
+/** Create an AbortController that auto-aborts after `ms` milliseconds. */
+function createTimeoutController(ms: number): { controller: AbortController; clear: () => void } {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+  return {
+    controller,
+    clear: () => clearTimeout(id),
+  };
+}
+
+/** Read an SSE stream with inter-chunk timeout and parse-error tracking. */
+async function readSseStream(
+  response: Response,
+  extractContent: (json: unknown) => string,
+  onChunk: (accumulated: string) => void,
+): Promise<AiResponse> {
+  const reader = response.body?.getReader();
+  if (!reader) return { success: false, error: '无法读取响应流' };
+
+  const decoder = new TextDecoder();
+  let result = '';
+  let consecutiveErrors = 0;
+  let chunkTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const resetChunkTimer = () => {
+    if (chunkTimer) clearTimeout(chunkTimer);
+    chunkTimer = setTimeout(() => {
+      reader.cancel().catch(() => {});
+    }, AI_CHUNK_TIMEOUT);
+  };
+
+  try {
+    resetChunkTimer();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetChunkTimer();
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const content = extractContent(json);
+          if (content) {
+            result += content;
+            onChunk(result);
+          }
+          consecutiveErrors = 0;
+        } catch (e) {
+          consecutiveErrors++;
+          console.debug(`[AI Stream] JSON parse error (${consecutiveErrors}/${MAX_CONSECUTIVE_PARSE_ERRORS}):`, e);
+          if (consecutiveErrors >= MAX_CONSECUTIVE_PARSE_ERRORS) {
+            return { success: false, error: 'AI 响应格式异常，连续解析失败过多' };
+          }
+        }
+      }
+    }
+  } finally {
+    if (chunkTimer) clearTimeout(chunkTimer);
+  }
+
+  return { success: true, content: result };
+}
+
 // 获取不同provider的模型列表
 export const getProviderModels = (provider: AiApiProvider): string[] => {
   switch (provider) {
@@ -140,9 +215,9 @@ export async function callAiFormatting(
 
   } catch (error) {
     console.error('AI API 调用失败:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : '调用失败，请检查网络或API配置' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '调用失败，请检查网络或API配置'
     };
   }
 }
@@ -154,62 +229,44 @@ async function callOpenAI(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
-  }
-
-  if (onChunk && response.body) {
-    // 流式处理
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim() !== '');
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try {
-            const json = JSON.parse(data);
-            const content = json.choices?.[0]?.delta?.content || '';
-            result += content;
-            onChunk(result);
-          } catch {
-            // 忽略解析错误
-          }
-        }
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
     }
-    
-    return { success: true, content: result };
-  }
 
-  const data = await response.json();
-  return { success: true, content: data.choices?.[0]?.message?.content || '' };
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.choices?.[0]?.delta?.content || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.choices?.[0]?.message?.content || '' };
+  } finally {
+    tc.clear();
+  }
 }
 
 // Anthropic API 调用
@@ -219,63 +276,46 @@ async function callAnthropic(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      system: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。',
-      messages: [
-        { role: 'user', content: prompt }
-      ],
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        system: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
-  }
-
-  if (onChunk && response.body) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim() !== '');
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try {
-            const json = JSON.parse(data);
-            const content = json.delta?.text || '';
-            result += content;
-            onChunk(result);
-          } catch {
-            // 忽略解析错误
-          }
-        }
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
     }
-    
-    return { success: true, content: result };
-  }
 
-  const data = await response.json();
-  return { success: true, content: data.content?.[0]?.text || '' };
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.delta?.text || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.content?.[0]?.text || '' };
+  } finally {
+    tc.clear();
+  }
 }
 
 // DeepSeek API 调用
@@ -285,61 +325,44 @@ async function callDeepSeek(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
-  }
-
-  if (onChunk && response.body) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim() !== '');
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try {
-            const json = JSON.parse(data);
-            const content = json.choices?.[0]?.delta?.content || '';
-            result += content;
-            onChunk(result);
-          } catch {
-            // 忽略解析错误
-          }
-        }
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
     }
-    
-    return { success: true, content: result };
-  }
 
-  const data = await response.json();
-  return { success: true, content: data.choices?.[0]?.message?.content || '' };
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.choices?.[0]?.delta?.content || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.choices?.[0]?.message?.content || '' };
+  } finally {
+    tc.clear();
+  }
 }
 
 // Ollama 本地 API 调用
@@ -348,57 +371,86 @@ async function callOllama(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('http://localhost:11434/api/chat', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
-        { role: 'user', content: prompt }
-      ],
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('http://localhost:11434/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
+          { role: 'user', content: prompt }
+        ],
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    return { 
-      success: false, 
-      error: '无法连接到 Ollama 服务，请确保已在本地运行 ollama' 
-    };
-  }
-
-  if (onChunk && response.body) {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let result = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim() !== '');
-      
-      for (const line of lines) {
-        try {
-          const json = JSON.parse(line);
-          const content = json.message?.content || '';
-          result += content;
-          onChunk(result);
-        } catch {
-          // 忽略解析错误
-        }
-      }
+    if (!response.ok) {
+      return {
+        success: false,
+        error: '无法连接到 Ollama 服务，请确保已在本地运行 ollama'
+      };
     }
-    
-    return { success: true, content: result };
-  }
 
-  const data = await response.json();
-  return { success: true, content: data.message?.content || '' };
+    if (onChunk && response.body) {
+      // Ollama uses raw JSON lines (no "data: " SSE prefix)
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let result = '';
+      let consecutiveErrors = 0;
+      let chunkTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const resetChunkTimer = () => {
+        if (chunkTimer) clearTimeout(chunkTimer);
+        chunkTimer = setTimeout(() => {
+          reader.cancel().catch(() => {});
+        }, AI_CHUNK_TIMEOUT);
+      };
+
+      try {
+        resetChunkTimer();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          resetChunkTimer();
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+          for (const line of lines) {
+            try {
+              const json = JSON.parse(line);
+              const content = json.message?.content || '';
+              if (content) {
+                result += content;
+                onChunk(result);
+              }
+              consecutiveErrors = 0;
+            } catch (e) {
+              consecutiveErrors++;
+              console.debug(`[AI Stream] JSON parse error (${consecutiveErrors}/${MAX_CONSECUTIVE_PARSE_ERRORS}):`, e);
+              if (consecutiveErrors >= MAX_CONSECUTIVE_PARSE_ERRORS) {
+                return { success: false, error: 'AI 响应格式异常，连续解析失败过多' };
+              }
+            }
+          }
+        }
+      } finally {
+        if (chunkTimer) clearTimeout(chunkTimer);
+      }
+
+      return { success: true, content: result };
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.message?.content || '' };
+  } finally {
+    tc.clear();
+  }
 }
 
 // 豆包 API 调用 (字节跳动)
@@ -408,34 +460,44 @@ async function callDoubao(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
+    }
+
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.choices?.[0]?.delta?.content || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.choices?.[0]?.message?.content || '' };
+  } finally {
+    tc.clear();
   }
-
-  if (onChunk && response.body) {
-    return await handleStreamResponse(response, onChunk);
-  }
-
-  const data = await response.json();
-  return { success: true, content: data.choices?.[0]?.message?.content || '' };
 }
 
 // 通义千问 API 调用 (阿里)
@@ -445,34 +507,44 @@ async function callQwen(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
+    }
+
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.choices?.[0]?.delta?.content || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.choices?.[0]?.message?.content || '' };
+  } finally {
+    tc.clear();
   }
-
-  if (onChunk && response.body) {
-    return await handleStreamResponse(response, onChunk);
-  }
-
-  const data = await response.json();
-  return { success: true, content: data.choices?.[0]?.message?.content || '' };
 }
 
 // 智谱 GLM API 调用
@@ -482,34 +554,44 @@ async function callZhipu(
   prompt: string,
   onChunk?: (chunk: string) => void
 ): Promise<AiResponse> {
-  const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
+    }
+
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.choices?.[0]?.delta?.content || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    return { success: true, content: data.choices?.[0]?.message?.content || '' };
+  } finally {
+    tc.clear();
   }
-
-  if (onChunk && response.body) {
-    return await handleStreamResponse(response, onChunk);
-  }
-
-  const data = await response.json();
-  return { success: true, content: data.choices?.[0]?.message?.content || '' };
 }
 
 // 自定义 API 调用
@@ -524,75 +606,46 @@ async function callCustomApi(
     return { success: false, error: '请配置自定义 API 地址' };
   }
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      stream: Boolean(onChunk),
-    }),
-  });
+  const tc = createTimeoutController(AI_FETCH_TIMEOUT);
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个专业的公众号排版助手，擅长将文章排版得美观易读。直接输出排版后的Markdown内容，不要添加任何解释。' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        stream: Boolean(onChunk),
+      }),
+      signal: tc.controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    return { success: false, error: error.error?.message || 'API 调用失败' };
-  }
-
-  if (onChunk && response.body) {
-    return await handleStreamResponse(response, onChunk);
-  }
-
-  const data = await response.json();
-  // 尝试多种可能的返回格式
-  return { 
-    success: true, 
-    content: data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.content || '' 
-  };
-}
-
-// 统一处理流式响应
-async function handleStreamResponse(
-  response: Response,
-  onChunk: (chunk: string) => void
-): Promise<AiResponse> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return { success: false, error: '无法读取响应' };
-  }
-  
-  const decoder = new TextDecoder();
-  let result = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n').filter(line => line.trim() !== '');
-    
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const json = JSON.parse(data);
-          const content = json.choices?.[0]?.delta?.content || json.choices?.[0]?.text || json.message?.content || '';
-          result += content;
-          onChunk(result);
-        } catch {
-          // 忽略解析错误
-        }
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error?.message || 'API 调用失败' };
     }
+
+    if (onChunk && response.body) {
+      return await readSseStream(
+        response,
+        (json: any) => json.choices?.[0]?.delta?.content || '',
+        onChunk,
+      );
+    }
+
+    const data = await response.json();
+    // 尝试多种可能的返回格式
+    return {
+      success: true,
+      content: data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.content || ''
+    };
+  } finally {
+    tc.clear();
   }
-  
-  return { success: true, content: result };
 }
