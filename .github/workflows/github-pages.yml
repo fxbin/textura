@@ -34,7 +34,12 @@ jobs:
       - name: Build static export
         env:
           GITHUB_PAGES: "true"
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN || '' }}
         run: npm run build
+
+      - name: Add CNAME for custom domain
+        if: ${{ vars.CUSTOM_DOMAIN == 'true' && vars.DOMAIN_NAME != '' }}
+        run: echo "${{ vars.DOMAIN_NAME }}" > out/CNAME
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
