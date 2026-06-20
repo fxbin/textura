@@ -188,6 +188,65 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
         });
     });
 
+    // 4.7 WeChat CSS Property Degradation.
+    // WeChat strips or ignores many CSS properties. Degrade them to
+    // WeChat-safe alternatives so the visual output stays intact.
+    section.querySelectorAll('*').forEach(node => {
+        let style = node.getAttribute('style') || '';
+        if (!style) return;
+        const tag = node.tagName;
+
+        // (a) Gradient → solid color fallback.
+        // WeChat strips background-image entirely, including gradients.
+        if (/background(?:-image)?\s*:\s*[^;]*(?:linear|radial)-gradient/i.test(style)) {
+            // Extract first usable color from the gradient as fallback
+            const colorMatch = style.match(/(?:rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})/);
+            const fallback = colorMatch ? colorMatch[0] : '#e0e0e0';
+
+            if (tag === 'HR') {
+                // HR with gradient becomes a solid border-top line
+                style = style
+                    .replace(/background(?:-image)?\s*:\s*[^;]+;?/g, '')
+                    .replace(/border\s*:\s*none;?/g, '');
+                style += ` border: none; border-top: 1px solid ${fallback}; height: 0;`;
+            } else {
+                style = style.replace(/background(?:-image)?\s*:\s*[^;]+;?/g, '');
+                style += ` background-color: ${fallback};`;
+            }
+        }
+
+        // (b) display: table → display: block + centering.
+        // WeChat strips display:table on non-table elements (used for heading centering).
+        if (style.includes('display: table') || style.includes('display:table')) {
+            style = style.replace(/display\s*:\s*table\s*;?/g, 'display: block; text-align: center;');
+        }
+
+        // (c) Strip properties WeChat silently ignores — avoids dead CSS clutter
+        // and prevents edge-case rendering bugs.
+        style = style
+            .replace(/box-shadow\s*:\s*[^;]+;?/g, '')
+            .replace(/text-shadow\s*:\s*[^;]+;?/g, '')
+            .replace(/font-variant\s*:\s*[^;]+;?/g, '')
+            .replace(/object-fit\s*:\s*[^;]+;?/g, '')
+            .replace(/text-decoration-color\s*:\s*[^;]+;?/g, '')
+            .replace(/text-underline-offset\s*:\s*[^;]+;?/g, '')
+            .replace(/;\s*;/g, ';')
+            .trim();
+
+        node.setAttribute('style', style);
+    });
+
+    // (d) Code blocks: WeChat does not support overflow-x:auto horizontal scroll.
+    // Force line wrapping instead of truncation.
+    section.querySelectorAll('pre').forEach(pre => {
+        const style = pre.getAttribute('style') || '';
+        const degraded = style
+            .replace(/overflow-x\s*:\s*auto;?/g, '')
+            .replace(/overflow\s*:\s*auto;?/g, '')
+            + ' white-space: pre-wrap; word-wrap: break-word; overflow: visible;';
+        pre.setAttribute('style', degraded.trim());
+    });
+
     // Keep CJK punctuation attached to preceding inline emphasis in WeChat.
     // Example: <strong>标题</strong>：说明 -> <strong>标题：</strong>说明
     const inlineNodes = section.querySelectorAll('strong, b, em, span, a, code');
@@ -375,4 +434,48 @@ export function convertLinksToFootnotes(html: string): string {
 
     doc.body.appendChild(refSection);
     return doc.body.innerHTML;
+}
+
+// ── Dark-theme detection ──
+
+/** Parse a CSS color string into [r, g, b] (0–255). Returns null on failure. */
+function parseColor(raw: string): [number, number, number] | null {
+    const s = raw.trim();
+    // #hex
+    const hex = s.match(/^#([0-9a-f]{3,8})$/i);
+    if (hex) {
+        let h = hex[1];
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        if (h.length >= 6) {
+            return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+        }
+    }
+    // rgb / rgba
+    const rgb = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (rgb) return [+rgb[1], +rgb[2], +rgb[3]];
+    return null;
+}
+
+function luminance(r: number, g: number, b: number): number {
+    const [rs, gs, bs] = [r, g, b].map(c => {
+        c /= 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/**
+ * Returns true when the theme has a dark background color that WeChat is
+ * likely to strip, causing light-colored text to become invisible on
+ * WeChat's default white article background.
+ */
+export function isWeChatDarkThemeRisk(themeId: string): boolean {
+    const theme = THEMES.find(t => t.id === themeId);
+    if (!theme) return false;
+    const container = theme.styles.container || '';
+    const bgMatch = container.match(/background-color\s*:\s*([^;]+)/);
+    if (!bgMatch) return false;
+    const rgb = parseColor(bgMatch[1]);
+    if (!rgb) return false;
+    return luminance(rgb[0], rgb[1], rgb[2]) < 0.3;
 }

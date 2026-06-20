@@ -30,7 +30,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { copyRichContent } from '@/lib/clipboard';
-import { makeWeChatCompatible, convertLinksToFootnotes } from '@/lib/wechatCompat';
+import { makeWeChatCompatible, convertLinksToFootnotes, isWeChatDarkThemeRisk } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
 import { ThemeSelector } from '@/components/editor/ThemeSelector';
 import { useTauriRuntime } from '@/hooks/useTauriRuntime';
@@ -472,7 +472,11 @@ export function TopNav() {
       }
 
       if (presetTheme) {
-        toast.success('已复制到剪贴板，请直接粘贴到公众号后台');
+        if (isWeChatDarkThemeRisk(theme)) {
+          toast.warning('当前为暗色主题，微信可能剥离深色背景导致文字不可见。建议使用浅色主题。');
+        } else {
+          toast.success('已复制到剪贴板，请直接粘贴到公众号后台');
+        }
       } else {
         toast.warning('已复制当前预览 HTML。自定义主题在微信中可能丢失样式。');
       }

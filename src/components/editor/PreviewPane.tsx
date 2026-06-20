@@ -22,7 +22,7 @@ import { useEditorStore } from '@/store/useEditorStore';
 import { THEMES } from '@/lib/themes/index';
 import { md, applyTheme } from '@/lib/markdown';
 import { resolveImagePaths } from '@/lib/imageResolver';
-import { makeWeChatCompatible, convertLinksToFootnotes } from '@/lib/wechatCompat';
+import { makeWeChatCompatible, convertLinksToFootnotes, isWeChatDarkThemeRisk } from '@/lib/wechatCompat';
 import { copyRichContent } from '@/lib/clipboard';
 import { cn, calculateWordCount } from '@/lib/utils';
 import 'heti/umd/heti.min.css';
@@ -62,20 +62,24 @@ export function PreviewPane() {
   const isPresetTheme = React.useMemo(() => THEMES.some((item) => item.id === theme), [theme]);
 
   React.useEffect(() => {
-    const processContent = async () => {
-      if (!isPresetTheme) {
-        return;
-      }
+    if (!isPresetTheme) return;
 
+    let cancelled = false;
+    const debounceId = setTimeout(async () => {
       const rawHtml = md.render(deferredMarkdown);
       const resolvedHtml = resolveImagePaths(rawHtml, imageBasePath);
       const themedHtml = applyTheme(resolvedHtml, theme, fontSize);
       const styledHtml = await renderMermaidInHtml(themedHtml);
 
-      setHtmlContent(styledHtml);
-    };
+      if (!cancelled) {
+        setHtmlContent(styledHtml);
+      }
+    }, 200);
 
-    processContent();
+    return () => {
+      cancelled = true;
+      clearTimeout(debounceId);
+    };
   }, [deferredMarkdown, theme, fontSize, isPresetTheme, imageBasePath]);
 
   const stats = React.useMemo(() => {
@@ -145,11 +149,15 @@ export function PreviewPane() {
       }
 
       if (isPresetTheme) {
-        toast.success(
-          copyResult.method === 'clipboard'
-            ? '已复制到剪贴板，可直接粘贴到微信公众号'
-            : '已通过兼容模式复制，可尝试直接粘贴到微信公众号'
-        );
+        if (isWeChatDarkThemeRisk(theme)) {
+          toast.warning('当前为暗色主题，微信可能剥离深色背景导致文字不可见。建议使用浅色主题。');
+        } else {
+          toast.success(
+            copyResult.method === 'clipboard'
+              ? '已复制到剪贴板，可直接粘贴到微信公众号'
+              : '已通过兼容模式复制，可尝试直接粘贴到微信公众号'
+          );
+        }
       } else {
         toast.warning('已复制当前预览 HTML。自定义主题仅保证本地预览，粘贴到微信时可能丢失样式。');
       }
