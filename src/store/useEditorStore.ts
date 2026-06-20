@@ -70,7 +70,9 @@ interface EditorState {
 
   // 设置对话框状态
   isSettingsOpen: boolean;
+  hasSeenOnboarding: boolean;
   setSettingsOpen: (open: boolean) => void;
+  setHasSeenOnboarding: (seen: boolean) => void;
 
   // DOM Registry for Scroll Sync
   editorRef: HTMLElement | null;
@@ -318,6 +320,7 @@ export const useEditorStore = create<EditorState>()(
           model: 'deepseek-chat',
         },
         isSettingsOpen: false,
+        hasSeenOnboarding: false,
         editorRef: null,
         previewRef: null,
         _hasHydrated: false,
@@ -343,6 +346,7 @@ export const useEditorStore = create<EditorState>()(
           aiApiConfig: { ...state.aiApiConfig, ...config }
         })),
         setSettingsOpen: (open) => set({ isSettingsOpen: open }),
+        setHasSeenOnboarding: (seen) => set({ hasSeenOnboarding: seen }),
         resetMarkdown: () => set({ markdown: defaultMarkdown }),
 
         addSavedTheme: (id, name, css) => set((state) => {
@@ -382,6 +386,7 @@ export const useEditorStore = create<EditorState>()(
           isScrollSyncEnabled: state.isScrollSyncEnabled,
           isStatsVisible: state.isStatsVisible,
           imageBasePath: state.imageBasePath,
+          hasSeenOnboarding: state.hasSeenOnboarding,
           aiProvider: state.aiProvider,
           aiApiConfig: state.aiApiConfig
         }),

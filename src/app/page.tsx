@@ -6,6 +6,7 @@ import { PreviewPane } from '@/components/editor/PreviewPane';
 import { RecoveryBanner } from '@/components/layout/RecoveryBanner';
 import { TopNav } from '@/components/layout/TopNav';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { OnboardingDialog } from '@/components/editor/OnboardingDialog';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -29,6 +30,7 @@ export default function Home() {
     <main className="h-screen w-screen flex flex-col overflow-hidden bg-background relative">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-background to-background pointer-events-none select-none" />
       <TopNav />
+      <OnboardingDialog />
       <RecoveryBanner />
       <DocumentDetailBar />
       <div className="flex-1 min-h-0 z-10">

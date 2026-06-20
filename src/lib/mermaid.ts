@@ -1,7 +1,6 @@
 'use client';
 
-import mermaid from 'mermaid';
-
+let mermaidModule: typeof import('mermaid') | null = null;
 let initialized = false;
 
 export function normalizeMermaidDefinition(content: string) {
@@ -14,22 +13,31 @@ export function normalizeMermaidDefinition(content: string) {
     .trim();
 }
 
-function ensureMermaidInitialized() {
-  if (initialized || typeof window === 'undefined') {
-    return;
+async function getMermaid() {
+  if (typeof window === 'undefined') return null;
+
+  if (!mermaidModule) {
+    const mod = await import('mermaid');
+    mermaidModule = mod;
   }
 
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'default',
-    securityLevel: 'strict',
-    fontFamily: 'inherit',
-  });
-  initialized = true;
+  if (!initialized) {
+    mermaidModule.default.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'strict',
+      fontFamily: 'inherit',
+    });
+    initialized = true;
+  }
+
+  return mermaidModule.default;
 }
 
 export async function renderMermaidSvg(chart: string, id: string) {
-  ensureMermaidInitialized();
+  const mermaid = await getMermaid();
+  if (!mermaid) throw new Error('Mermaid is not available in this environment');
+
   const MERMAID_TIMEOUT = 5000;
   const timeoutPromise = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error('Mermaid 渲染超时（5s），请检查图表语法')), MERMAID_TIMEOUT)
@@ -42,6 +50,11 @@ export async function renderMermaidSvg(chart: string, id: string) {
 
 export async function renderMermaidInHtml(html: string) {
   if (typeof window === 'undefined') {
+    return html;
+  }
+
+  // Early exit: skip the entire mermaid pipeline if no mermaid blocks exist
+  if (!html.includes('language-mermaid')) {
     return html;
   }
 
