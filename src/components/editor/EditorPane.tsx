@@ -45,11 +45,34 @@ export function EditorPane() {
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
   const [isShortcutOpen, setIsShortcutOpen] = React.useState(false);
-  
-  const stats = React.useMemo(() => calculateWordCount(markdown), [markdown]);
+  const [aiSelectedText, setAiSelectedText] = React.useState<string | undefined>(undefined);
 
   // Use callback ref to ensure registration
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const handleOpenAiDialog = React.useCallback(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      if (start !== end) {
+        setAiSelectedText(textarea.value.substring(start, end));
+      } else {
+        setAiSelectedText(undefined);
+      }
+    }
+    setIsAiDialogOpen(true);
+  }, []);
+
+  const handleAiDialogOpenChange = React.useCallback((open: boolean) => {
+    setIsAiDialogOpen(open);
+    if (!open) {
+      setAiSelectedText(undefined);
+    }
+  }, []);
+
+  const stats = React.useMemo(() => calculateWordCount(markdown), [markdown]);
+
   const setTextareaRef = React.useCallback((node: HTMLTextAreaElement | null) => {
     textareaRef.current = node; // Keep ref for internal usage (insertFormat)
     registerEditorScroller(node);
@@ -385,7 +408,7 @@ export function EditorPane() {
 
   return (
     <div className="group relative flex h-full w-full flex-col bg-transparent">
-      <AiAssistDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
+      <AiAssistDialog open={isAiDialogOpen} onOpenChange={handleAiDialogOpenChange} selectedText={aiSelectedText} />
       <ShortcutDialog open={isShortcutOpen} onOpenChange={setIsShortcutOpen} />
 
       <div className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 overflow-x-auto border-b border-border/40 bg-background/80 px-4 py-2 backdrop-blur-md transition-all no-scrollbar">
@@ -509,8 +532,8 @@ export function EditorPane() {
               variant="ghost"
               size="sm"
               className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-primary"
-              onClick={() => setIsAiDialogOpen(true)}
-              title="调起 AI 辅助排版"
+              onClick={handleOpenAiDialog}
+              title="调起 AI 辅助"
             >
               <Bot className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">AI 辅助</span>

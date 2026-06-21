@@ -15,6 +15,28 @@ const FORMATTING_PROMPT = `请将以下内容重新排版为适合微信公众�
 【原文内容】：
 `;
 
+export type AiTaskMode = 'format' | 'polish' | 'summarize' | 'expand' | 'fix';
+
+export const TASK_PROMPTS: Record<AiTaskMode, string> = {
+  format: FORMATTING_PROMPT,
+  polish: `请润色以下内容，使其更加流畅、专业。保持原文核心意思不变，优化措辞和段落结构。直接输出润色后的内容。
+
+【原文内容】：
+`,
+  summarize: `请对以下内容进行精炼总结，提取核心观点和关键信息。用 Markdown 格式输出。
+
+【原文内容】：
+`,
+  expand: `请对以下内容进行扩展和丰富，补充细节、案例或解释。用 Markdown 格式输出。
+
+【原文内容】：
+`,
+  fix: `请检查并修正以下内容中的语法错误、错别字、标点符号问题。直接输出修正后的内容。
+
+【原文内容】：
+`,
+};
+
 interface AiResponse {
   success: boolean;
   content?: string;
@@ -150,7 +172,8 @@ export const getDefaultModel = (provider: AiApiProvider): string => {
 export async function callAiFormatting(
   config: AiApiConfig,
   content: string,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
+  taskMode: AiTaskMode = 'format'
 ): Promise<AiResponse> {
   const { provider, apiKey, model } = config;
 
@@ -162,7 +185,8 @@ export async function callAiFormatting(
     return { success: false, error: '内容不能为空' };
   }
 
-  const fullPrompt = FORMATTING_PROMPT + content;
+  const prompt = TASK_PROMPTS[taskMode] || TASK_PROMPTS.format;
+  const fullPrompt = prompt + content;
 
   // 辅助函数：去除 Markdown 代码块包裹
   const stripMarkdownCodeBlock = (text: string) => {

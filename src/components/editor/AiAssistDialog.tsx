@@ -16,12 +16,13 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Copy, ExternalLink, ArrowRight, Bot, Sparkles, Zap, Loader2, Settings } from 'lucide-react';
 import { toast } from 'sonner';
-import { callAiFormatting } from '@/lib/aiService';
+import { callAiFormatting, type AiTaskMode } from '@/lib/aiService';
 import { openExternalLink } from '@/lib/link';
 
 interface AiAssistDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  selectedText?: string;
 }
 
 const AI_PROVIDERS = [
@@ -31,11 +32,24 @@ const AI_PROVIDERS = [
   { id: 'chatgpt', name: 'ChatGPT', url: 'https://chat.openai.com', icon: '🤖' },
 ] as const;
 
-export function AiAssistDialog({ open, onOpenChange }: AiAssistDialogProps) {
+const TASK_MODES: { id: AiTaskMode; label: string }[] = [
+  { id: 'format', label: '排版' },
+  { id: 'polish', label: '润色' },
+  { id: 'summarize', label: '摘要' },
+  { id: 'expand', label: '扩写' },
+  { id: 'fix', label: '纠错' },
+];
+
+export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDialogProps) {
   const { markdown, setMarkdown, aiProvider, setAiProvider, aiApiConfig, setSettingsOpen } = useEditorStore();
   const [resultText, setResultText] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [mode, setMode] = React.useState<'api' | 'manual'>('api');
+  const [taskMode, setTaskMode] = React.useState<AiTaskMode>('format');
+
+  // Determine the content to process: selected text or full document
+  const effectiveContent = selectedText && selectedText.trim() ? selectedText : markdown;
+  const isProcessingSelection = Boolean(selectedText && selectedText.trim());
   
   // 当对话框打开时，检查API是否配置
   React.useEffect(() => {
@@ -48,18 +62,11 @@ export function AiAssistDialog({ open, onOpenChange }: AiAssistDialogProps) {
     }
   }, [open, aiApiConfig]);
 
-  const prompt = `请将以下内容重新排版为适合微信公众号阅读的 Markdown 格式。
-
-【排版结构要求】：
-1. 一级标题：必须以 "## " 开头，并使用中文数字编号（如 "## 一、核心观点"）。
-2. 二级标题：必须以 "### " 开头，并使用括号编号（如 "### （一）详细说明"）。
-3. 三级标题：必须以 "#### " 开头，并使用数字编号（如 "#### 1. 具体步骤"）。
-4. 列表：使用 "- " 开头。
-5. 重点：保留原文核心意图，优化段落间距，适当添加 Emoji 增加趣味性（可选）。
-6. 禁忌：不要输出任何"好的"、"如下"等客套话，直接输出 Markdown 代码。
+  const taskModeLabel = TASK_MODES.find(m => m.id === taskMode)?.label || '排版';
+  const prompt = `请对以下内容进行「${taskModeLabel}」处理。
 
 【原文内容】：
-${markdown}`;
+${effectiveContent}`;
 
   const handleCopyPrompt = async () => {
     try {
@@ -97,8 +104,8 @@ ${markdown}`;
 
   // API模式调用AI
   const handleApiCall = async () => {
-    if (!markdown.trim()) {
-      toast.error('请先输入一些内容');
+    if (!effectiveContent.trim()) {
+      toast.error(isProcessingSelection ? '请先选中一些文字' : '请先输入一些内容');
       return;
     }
 
@@ -106,13 +113,13 @@ ${markdown}`;
     setResultText('');
 
     try {
-      const result = await callAiFormatting(aiApiConfig, markdown, (chunk) => {
+      const result = await callAiFormatting(aiApiConfig, effectiveContent, (chunk) => {
         setResultText(chunk);
-      });
+      }, taskMode);
 
       if (result.success && result.content) {
         setResultText(result.content);
-        toast.success('AI 排版完成！');
+        toast.success(`AI ${taskModeLabel}完成！`);
       } else {
         toast.error(result.error || '调用失败');
       }
@@ -128,9 +135,23 @@ ${markdown}`;
       toast.error('请先生成或粘贴内容');
       return;
     }
-    setMarkdown(resultText);
+
+    if (isProcessingSelection && selectedText) {
+      // Replace only the selected portion in the full markdown
+      const idx = markdown.indexOf(selectedText);
+      if (idx !== -1) {
+        const newMarkdown = markdown.substring(0, idx) + resultText + markdown.substring(idx + selectedText.length);
+        setMarkdown(newMarkdown);
+      } else {
+        // Fallback: if exact match not found, replace the whole document
+        setMarkdown(resultText);
+      }
+    } else {
+      setMarkdown(resultText);
+    }
+
     onOpenChange(false);
-    toast.success('排版已应用');
+    toast.success(`${taskModeLabel}已应用`);
     setResultText('');
   };
 
@@ -147,13 +168,25 @@ ${markdown}`;
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Sparkles className="w-5 h-5 text-primary" />
-            AI 辅助排版
+            AI 辅助
           </DialogTitle>
           <DialogDescription className="text-sm">
-            {hasApiConfig 
-              ? '选择「API模式」一键完成排版，或选择「手动模式」复制到其他AI工具处理。'
-              : '请在设置中配置 AI API 以使用一键排版功能，或使用手动模式。'}
+            {hasApiConfig
+              ? '选择任务模式和操作方式，AI 将帮你处理内容。'
+              : '请在设置中配置 AI API 以使用一键处理功能，或使用手动模式。'}
           </DialogDescription>
+          {isProcessingSelection && (
+            <div className="mt-1 inline-flex items-center gap-1.5 self-start rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+              处理选中文字
+            </div>
+          )}
+          {!isProcessingSelection && (
+            <div className="mt-1 inline-flex items-center gap-1.5 self-start rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+              处理全文
+            </div>
+          )}
         </DialogHeader>
   
         <div className="flex-1 overflow-y-auto min-h-0">
@@ -162,7 +195,7 @@ ${markdown}`;
             <TabsList className="w-full grid grid-cols-2 mb-4">
               <TabsTrigger value="api" className="gap-2">
                 <Zap className="w-4 h-4" />
-                API 一键排版
+                API 一键处理
               </TabsTrigger>
               <TabsTrigger value="manual" className="gap-2">
                 <Bot className="w-4 h-4" />
@@ -174,6 +207,24 @@ ${markdown}`;
             <TabsContent value="api" className="space-y-4 m-0">
               {canUseApi ? (
                 <>
+                  {/* Task Mode Selector */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold text-primary">任务模式</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TASK_MODES.map((tm) => (
+                        <Button
+                          key={tm.id}
+                          variant={taskMode === tm.id ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 rounded-full px-3 text-xs"
+                          onClick={() => setTaskMode(tm.id)}
+                        >
+                          {tm.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Current Config Info */}
                   <div className="bg-muted/50 rounded-lg p-3 text-sm">
                     <div className="flex items-center justify-between">
@@ -189,11 +240,11 @@ ${markdown}`;
                   {/* Preview of content */}
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold text-primary">
-                      待排版内容预览
+                      待{taskModeLabel}内容预览
                     </Label>
                     <div className="bg-muted/30 rounded-lg p-3 max-h-32 overflow-y-auto">
                       <p className="text-xs text-muted-foreground line-clamp-6">
-                        {markdown.slice(0, 500)}{markdown.length > 500 ? '...' : ''}
+                        {effectiveContent.slice(0, 500)}{effectiveContent.length > 500 ? '...' : ''}
                       </p>
                     </div>
                   </div>
@@ -201,11 +252,11 @@ ${markdown}`;
                   {/* Result */}
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold flex items-center gap-2 text-primary">
-                      排版结果
+                      {taskModeLabel}结果
                       {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                     </Label>
-                    <Textarea 
-                      placeholder={isLoading ? "AI 正在生成中..." : "点击「开始生成」获取排版结果"}
+                    <Textarea
+                      placeholder={isLoading ? "AI 正在生成中..." : `点击「开始生成」获取${taskModeLabel}结果`}
                       value={resultText}
                       onChange={(e) => setResultText(e.target.value)}
                       className="h-40 font-mono text-xs resize-none"
@@ -300,9 +351,9 @@ ${markdown}`;
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           {mode === 'api' && canUseApi && (
-            <Button 
-              onClick={handleApiCall} 
-              disabled={isLoading || !markdown.trim()}
+            <Button
+              onClick={handleApiCall}
+              disabled={isLoading || !effectiveContent.trim()}
               className="gap-2"
             >
               {isLoading ? (
@@ -320,7 +371,7 @@ ${markdown}`;
           )}
           <Button onClick={handleApply} disabled={!resultText.trim()} className="gap-2">
             <Bot className="w-4 h-4" />
-            应用排版
+            应用{taskModeLabel}
             <ArrowRight className="w-4 h-4" />
           </Button>
         </DialogFooter>
