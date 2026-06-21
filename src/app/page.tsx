@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { EditorPane } from '@/components/editor/EditorPane';
 import { DocumentDetailBar } from '@/components/layout/DocumentDetailBar';
 import { PreviewPane } from '@/components/editor/PreviewPane';
@@ -22,9 +23,22 @@ export default function Home() {
   // Use a shorter interval (e.g., 3 minutes) or the default 5 minutes
   useAutoSave(180000); // 3 minutes for peace of mind
   useDocumentWorkflow();
-  
+
   // Enable scroll synchronization
   useScrollSync();
+
+  // Detect mobile viewport (below 768px)
+  const [isMobile, setIsMobile] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  // Mobile tab state: which pane is visible on small screens
+  const [mobileTab, setMobileTab] = React.useState<'edit' | 'preview'>('edit');
 
   return (
     <main className="h-screen w-screen flex flex-col overflow-hidden bg-background relative">
@@ -33,21 +47,64 @@ export default function Home() {
       <OnboardingDialog />
       <RecoveryBanner />
       <DocumentDetailBar />
-      <div className="flex-1 min-h-0 z-10">
-        <ResizablePanelGroup orientation="horizontal" className="h-full">
-          <ResizablePanel defaultSize={40} minSize={20} className="h-full">
+
+      {/* Mobile tab bar — only visible below 768px */}
+      {isMobile && (
+        <div className="flex border-b border-border/40 bg-background/80 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileTab('edit')}
+            className={`flex-1 py-2 text-center text-sm transition-colors ${
+              mobileTab === 'edit'
+                ? 'border-b-2 border-primary font-medium'
+                : 'text-muted-foreground'
+            }`}
+          >
+            编辑
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('preview')}
+            className={`flex-1 py-2 text-center text-sm transition-colors ${
+              mobileTab === 'preview'
+                ? 'border-b-2 border-primary font-medium'
+                : 'text-muted-foreground'
+            }`}
+          >
+            预览
+          </button>
+        </div>
+      )}
+
+      {isMobile ? (
+        <div className="flex-1 min-h-0 z-10">
+          {mobileTab === 'edit' ? (
             <ErrorBoundary label="编辑器">
               <EditorPane />
             </ErrorBoundary>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={60} minSize={30} className="h-full">
+          ) : (
             <ErrorBoundary label="预览区">
               <PreviewPane />
             </ErrorBoundary>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 z-10">
+          <ResizablePanelGroup orientation="horizontal" className="h-full">
+            <ResizablePanel defaultSize={40} minSize={20} className="h-full">
+              <ErrorBoundary label="编辑器">
+                <EditorPane />
+              </ErrorBoundary>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={60} minSize={30} className="h-full">
+              <ErrorBoundary label="预览区">
+                <PreviewPane />
+              </ErrorBoundary>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      )}
     </main>
   );
 }
