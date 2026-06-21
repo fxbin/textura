@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { listen } from '@tauri-apps/api/event';
 import {
   BarChart2,
   Bold,
@@ -33,6 +32,7 @@ import { cn, calculateWordCount } from '@/lib/utils';
 import { autoFormatMarkdown, formatWeChatLinks } from '@/lib/formatter';
 import { handleSmartPaste } from '@/lib/htmlToMarkdown';
 import { AiAssistDialog } from './AiAssistDialog';
+import { ShortcutDialog } from './ShortcutDialog';
 
 export function EditorPane() {
   const {
@@ -44,6 +44,7 @@ export function EditorPane() {
     registerEditorScroller,
   } = useEditorStore();
   const [isAiDialogOpen, setIsAiDialogOpen] = React.useState(false);
+  const [isShortcutOpen, setIsShortcutOpen] = React.useState(false);
   
   const stats = React.useMemo(() => calculateWordCount(markdown), [markdown]);
 
@@ -218,12 +219,27 @@ export function EditorPane() {
       return;
     }
 
-    const unlisten = listen('menu-event', (event) => {
-      handleMenuEvent(event.payload as string);
-    });
+    let cancelled = false;
+
+    (async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      if (cancelled) return;
+      const unlisten = await listen('menu-event', (event) => {
+        handleMenuEvent(event.payload as string);
+      });
+      if (cancelled) {
+        unlisten();
+      } else {
+        // Store for cleanup
+        cleanupRef.current = unlisten;
+      }
+    })();
+
+    const cleanupRef: { current: (() => void) | null } = { current: null };
 
     return () => {
-      unlisten.then((dispose) => dispose());
+      cancelled = true;
+      cleanupRef.current?.();
     };
   }, []);
 
@@ -276,6 +292,10 @@ export function EditorPane() {
           handleWeChatLinks();
         }
         break;
+      case '/':
+        event.preventDefault();
+        setIsShortcutOpen(true);
+        break;
       default:
         break;
     }
@@ -284,6 +304,7 @@ export function EditorPane() {
   return (
     <div className="group relative flex h-full w-full flex-col bg-transparent">
       <AiAssistDialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen} />
+      <ShortcutDialog open={isShortcutOpen} onOpenChange={setIsShortcutOpen} />
 
       <div className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 overflow-x-auto border-b border-border/40 bg-background/80 px-4 py-2 backdrop-blur-md transition-all no-scrollbar">
         <div className="flex shrink-0 items-center gap-1">

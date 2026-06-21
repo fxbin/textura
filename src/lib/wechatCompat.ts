@@ -343,6 +343,11 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
             const src = img.getAttribute('src');
             if (src && !src.startsWith('data:')) {
                 const base64 = await getBase64Image(src);
+                if (base64.length > 2_000_000) {
+                    console.warn(
+                        `[wechatCompat] Oversized Base64 image (${base64.length} chars, ~${(base64.length / 1_000_000).toFixed(1)}MB) from: ${src}`
+                    );
+                }
                 img.setAttribute('src', base64);
             }
         }));
@@ -478,4 +483,27 @@ export function isWeChatDarkThemeRisk(themeId: string): boolean {
     const rgb = parseColor(bgMatch[1]);
     if (!rgb) return false;
     return luminance(rgb[0], rgb[1], rgb[2]) < 0.3;
+}
+
+/**
+ * Build the final copy-ready HTML for clipboard.
+ * Shared by PreviewPane and TopNav so both produce identical output.
+ */
+export async function buildCopyHtml(
+    html: string,
+    themeId: string,
+    isPresetTheme: boolean,
+    customThemeCss: string,
+    statsHtml: string,
+): Promise<string> {
+    let content: string;
+    if (isPresetTheme) {
+        content = await makeWeChatCompatible(html, themeId);
+    } else {
+        content = convertLinksToFootnotes(`<style>${customThemeCss}</style>${html}`);
+    }
+    if (statsHtml) {
+        content = statsHtml + content;
+    }
+    return content;
 }
