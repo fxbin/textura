@@ -149,6 +149,89 @@ export function EditorPane() {
     }, 0);
   }, [restoreTextareaView, setMarkdown]);
 
+  // ── Image drag-and-drop / paste support ──
+  const [isDragOver, setIsDragOver] = React.useState(false);
+
+  const insertImageFiles = React.useCallback(
+    async (files: File[]) => {
+      const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) return;
+
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const cursorPos = textarea.selectionStart;
+      const text = textarea.value;
+      const scrollTop = textarea.scrollTop;
+
+      const mdImages: string[] = [];
+      for (const file of imageFiles) {
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(file);
+        });
+        if (dataUrl) {
+          const name = file.name.replace(/\.[^.]+$/, '') || 'image';
+          mdImages.push(`![${name}](${dataUrl})`);
+        }
+      }
+
+      if (mdImages.length === 0) return;
+
+      const insertion = '\n' + mdImages.join('\n') + '\n';
+      const newText = text.substring(0, cursorPos) + insertion + text.substring(cursorPos);
+      setMarkdown(newText);
+
+      const newCursor = cursorPos + insertion.length;
+      setTimeout(() => restoreTextareaView(newCursor, newCursor, scrollTop), 0);
+      toast.success(`已插入 ${mdImages.length} 张图片`);
+    },
+    [setMarkdown, restoreTextareaView]
+  );
+
+  const handleDragOver = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = React.useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      insertImageFiles(Array.from(e.dataTransfer.files));
+    },
+    [insertImageFiles]
+  );
+
+  const handleImagePaste = React.useCallback(
+    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = event.clipboardData?.items;
+      if (!items) return false;
+      const imageFiles: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length === 0) return false;
+      event.preventDefault();
+      insertImageFiles(imageFiles);
+      return true;
+    },
+    [insertImageFiles]
+  );
+
   const handleAutoFormat = React.useCallback(() => {
     if (!markdown.trim()) {
       toast.error('请先输入一些内容');
@@ -242,6 +325,7 @@ export function EditorPane() {
   }, []);
 
   const onPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (handleImagePaste(event)) return; // image found, handled
     handleSmartPaste(event, markdown, setMarkdown);
   };
 
@@ -448,25 +532,38 @@ export function EditorPane() {
         </div>
       </div>
 
-      <Textarea
-        ref={setTextareaRef}
-        value={markdown}
-        onChange={(event) => setMarkdown(event.target.value)}
-        onPaste={onPaste}
-        onKeyDown={handleKeyDown}
-        className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent p-8 font-mono text-base leading-relaxed focus-visible:ring-0"
-        placeholder="开始输入 Markdown..."
-      />
+      <div className="relative min-h-0 flex-1">
+        {isDragOver && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-none border-2 border-dashed border-primary/50 bg-primary/5 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-2 text-primary">
+              <ImageIcon className="h-8 w-8" />
+              <span className="text-sm font-medium">松开鼠标插入图片</span>
+            </div>
+          </div>
+        )}
+        <Textarea
+          ref={setTextareaRef}
+          value={markdown}
+          onChange={(event) => setMarkdown(event.target.value)}
+          onPaste={onPaste}
+          onKeyDown={handleKeyDown}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent p-8 font-mono text-base leading-relaxed focus-visible:ring-0"
+          placeholder="开始输入 Markdown..."
+        />
+      </div>
 
       <div className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-border/40 bg-background/50 px-4 py-3 backdrop-blur-md transition-all sm:px-6 sm:py-4">
         <div className="flex min-w-0 items-center gap-2">
           <Wand2 size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
           <span className="text-[12.5px] font-medium text-foreground">
             <span className="hidden sm:inline">
-              支持直接粘贴 <span className="text-muted-foreground">飞书、Notion 或 Word</span> 富文本，并自动净化为 Markdown
+              支持粘贴 <span className="text-muted-foreground">飞书 / Notion / Word</span> 富文本，拖拽或粘贴图片自动插入
             </span>
             <span className="sm:hidden">
-              支持直接粘贴 <span className="text-muted-foreground">飞书、Notion 或 Word</span> 富文本
+              支持粘贴富文本，拖拽或粘贴图片
             </span>
           </span>
         </div>
