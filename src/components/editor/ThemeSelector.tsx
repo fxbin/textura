@@ -7,7 +7,8 @@ import type { ThemePreview } from '@/lib/themes/types';
 import { buildThemePreview } from '@/lib/themes/preview';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { Check, Trash2, Save, X } from 'lucide-react';
+import { Check, Trash2, Save, X, Download, Upload, FileJson } from 'lucide-react';
+import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -32,8 +33,108 @@ export function ThemeSelector() {
   const [themeName, setThemeName] = React.useState("");
   const [isEditorVisible, setIsEditorVisible] = React.useState(true);
 
+  const importFileRef = React.useRef<HTMLInputElement>(null);
+  const importAllFileRef = React.useRef<HTMLInputElement>(null);
+
   const currentSavedTheme = savedThemes.find(t => t.id === theme);
   const isCustomOrSaved = theme === 'custom' || !!currentSavedTheme;
+
+  // --- Theme Export / Import handlers ---
+
+  const handleExportTheme = (t: typeof savedThemes[number]) => {
+    const data = { id: t.id, name: t.name, css: t.css, updatedAt: t.updatedAt };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `textura-theme-${t.name}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`已导出主题「${t.name}」`);
+  };
+
+  const handleExportAllThemes = () => {
+    if (savedThemes.length === 0) {
+      toast.error('没有可导出的主题');
+      return;
+    }
+    const data = savedThemes.map(t => ({ id: t.id, name: t.name, css: t.css, updatedAt: t.updatedAt }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `textura-themes-all.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`已导出 ${savedThemes.length} 个主题`);
+  };
+
+  const handleImportClick = () => {
+    importFileRef.current?.click();
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (!parsed.name || typeof parsed.name !== 'string' || !parsed.css || typeof parsed.css !== 'string') {
+          toast.error('无效的的主题文件：缺少 name 或 css 字段');
+          return;
+        }
+        const newId = `custom-${Date.now()}`;
+        addSavedTheme(newId, parsed.name, parsed.css);
+        toast.success(`已导入主题「${parsed.name}」`);
+      } catch {
+        toast.error('文件解析失败，请确认为有效的 JSON 文件');
+      }
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-imported
+    e.target.value = '';
+  };
+
+  const handleImportAllClick = () => {
+    importAllFileRef.current?.click();
+  };
+
+  const handleImportAllFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (!Array.isArray(parsed)) {
+          toast.error('批量导入需要 JSON 数组格式');
+          return;
+        }
+        let importedCount = 0;
+        for (const item of parsed) {
+          if (item.name && typeof item.name === 'string' && item.css && typeof item.css === 'string') {
+            const newId = `custom-${Date.now()}-${importedCount}`;
+            addSavedTheme(newId, item.name, item.css);
+            importedCount++;
+          }
+        }
+        if (importedCount > 0) {
+          toast.success(`已导入 ${importedCount} 个主题`);
+        } else {
+          toast.error('未找到有效的主题数据');
+        }
+      } catch {
+        toast.error('文件解析失败，请确认为有效的 JSON 文件');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   // Auto-show editor when switching to a custom/saved theme
   React.useEffect(() => {
@@ -167,7 +268,29 @@ export function ThemeSelector() {
           {/* Saved Custom Themes */}
           {savedThemes.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">我的收藏</h3>
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">我的收藏</h3>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    onClick={handleExportAllThemes}
+                    title="导出全部主题"
+                  >
+                    <Download className="w-3 h-3 mr-0.5" /> 导出全部
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    onClick={handleImportAllClick}
+                    title="批量导入主题"
+                  >
+                    <Upload className="w-3 h-3 mr-0.5" /> 导入
+                  </Button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {savedThemes.map((t) => (
                   <div key={t.id} className="group relative">
@@ -194,17 +317,31 @@ export function ThemeSelector() {
                     </button>
                     <div className="flex items-center justify-between mt-1.5 px-0.5">
                       <span className="text-xs font-medium truncate max-w-[80px]">{t.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(t.id);
-                        }}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-muted-foreground hover:text-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExportTheme(t);
+                          }}
+                          title="导出主题"
+                        >
+                          <Download className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(t.id);
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -229,6 +366,15 @@ export function ThemeSelector() {
                 theme === 'custom' ? "text-primary" : "text-muted-foreground group-hover:text-primary"
               )}>
                 + 新建自定义样式
+              </span>
+            </button>
+            <button
+              onClick={handleImportClick}
+              className="w-full p-3 rounded-lg border-2 border-dashed border-border transition-all duration-200 flex items-center justify-center gap-2 hover:bg-muted/50 hover:border-primary/50 group"
+            >
+              <FileJson className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+              <span className="font-medium text-sm text-muted-foreground group-hover:text-primary transition-colors">
+                导入主题文件
               </span>
             </button>
           </div>
@@ -351,6 +497,22 @@ export function ThemeSelector() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden file inputs for theme import */}
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+      <input
+        ref={importAllFileRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={handleImportAllFile}
+      />
     </div>
   );
 }
