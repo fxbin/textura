@@ -555,7 +555,7 @@ export function EditorPane() {
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {isDragOver && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-none border-2 border-dashed border-primary/50 bg-primary/5 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-2 text-primary">
@@ -573,7 +573,7 @@ export function EditorPane() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent p-8 font-mono text-base leading-relaxed focus-visible:ring-0"
+          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent p-8 font-mono text-base leading-relaxed focus-visible:ring-0 [field-sizing:fixed]"
           placeholder="开始输入 Markdown..."
         />
       </div>
