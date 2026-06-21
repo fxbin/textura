@@ -22,7 +22,7 @@ import { useEditorStore } from '@/store/useEditorStore';
 import { THEMES } from '@/lib/themes/index';
 import { md, applyTheme } from '@/lib/markdown';
 import { resolveImagePaths } from '@/lib/imageResolver';
-import { makeWeChatCompatible, convertLinksToFootnotes, isWeChatDarkThemeRisk } from '@/lib/wechatCompat';
+import { isWeChatDarkThemeRisk, buildCopyHtml } from '@/lib/wechatCompat';
 import { copyRichContent } from '@/lib/clipboard';
 import { cn, calculateWordCount } from '@/lib/utils';
 import 'heti/umd/heti.min.css';
@@ -32,21 +32,19 @@ import { renderMermaidInHtml } from '@/lib/mermaid';
 import { Mermaid } from './Mermaid';
 
 export function PreviewPane() {
-  const {
-    markdown,
-    theme,
-    fontSize,
-    deviceModel,
-    setDeviceModel,
-    customWidth,
-    customHeight,
-    setCustomSize,
-    customThemeCss,
-    isStatsVisible,
-    isHetiEnabled,
-    imageBasePath,
-    registerPreviewScroller,
-  } = useEditorStore();
+  const markdown = useEditorStore((s) => s.markdown);
+  const theme = useEditorStore((s) => s.theme);
+  const fontSize = useEditorStore((s) => s.fontSize);
+  const deviceModel = useEditorStore((s) => s.deviceModel);
+  const setDeviceModel = useEditorStore((s) => s.setDeviceModel);
+  const customWidth = useEditorStore((s) => s.customWidth);
+  const customHeight = useEditorStore((s) => s.customHeight);
+  const setCustomSize = useEditorStore((s) => s.setCustomSize);
+  const customThemeCss = useEditorStore((s) => s.customThemeCss);
+  const isStatsVisible = useEditorStore((s) => s.isStatsVisible);
+  const isHetiEnabled = useEditorStore((s) => s.isHetiEnabled);
+  const imageBasePath = useEditorStore((s) => s.imageBasePath);
+  const registerPreviewScroller = useEditorStore((s) => s.registerPreviewScroller);
   const [mounted, setMounted] = React.useState(false);
   const [htmlContent, setHtmlContent] = React.useState('');
   const deferredMarkdown = React.useDeferredValue(markdown);
@@ -121,26 +119,23 @@ export function PreviewPane() {
 
   const handleCopy = async () => {
     try {
-      let contentToCopy = '';
       const statsHtml = buildStatsHtml();
+      const sourceHtml = isPresetTheme
+        ? htmlContent
+        : contentRef.current?.innerHTML ?? '';
 
-      if (isPresetTheme) {
-        contentToCopy = await makeWeChatCompatible(htmlContent, theme);
-      } else {
-        const previewHtml = contentRef.current?.innerHTML;
-        if (!previewHtml) {
-          toast.error('未找到可复制的预览内容');
-          return;
-        }
-
-        contentToCopy = convertLinksToFootnotes(
-          `<style>${customThemeCss}</style>${previewHtml}`
-        );
+      if (!sourceHtml) {
+        toast.error('未找到可复制的预览内容');
+        return;
       }
 
-      if (statsHtml) {
-        contentToCopy = statsHtml + contentToCopy;
-      }
+      const contentToCopy = await buildCopyHtml(
+        sourceHtml,
+        theme,
+        isPresetTheme,
+        customThemeCss,
+        statsHtml,
+      );
 
       const copyResult = await copyRichContent(contentToCopy, deferredMarkdown);
       if (!copyResult.ok) {

@@ -30,8 +30,9 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { copyRichContent } from '@/lib/clipboard';
-import { makeWeChatCompatible, convertLinksToFootnotes, isWeChatDarkThemeRisk } from '@/lib/wechatCompat';
+import { isWeChatDarkThemeRisk, buildCopyHtml } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
+import { calculateWordCount } from '@/lib/utils';
 import { ThemeSelector } from '@/components/editor/ThemeSelector';
 import { useTauriRuntime } from '@/hooks/useTauriRuntime';
 import {
@@ -176,20 +177,18 @@ function buildStandaloneDocument(options: {
 }
 
 export function TopNav() {
-  const {
-    isSidebarOpen,
-    setSidebarOpen,
-    resetMarkdown,
-    fontSize,
-    setFontSize,
-    markdown,
-    theme,
-    savedThemes,
-    customThemeCss,
-    setMarkdown,
-    isStatsVisible,
-    toggleStats,
-  } = useEditorStore();
+  const isSidebarOpen = useEditorStore((s) => s.isSidebarOpen);
+  const setSidebarOpen = useEditorStore((s) => s.setSidebarOpen);
+  const resetMarkdown = useEditorStore((s) => s.resetMarkdown);
+  const fontSize = useEditorStore((s) => s.fontSize);
+  const setFontSize = useEditorStore((s) => s.setFontSize);
+  const markdown = useEditorStore((s) => s.markdown);
+  const theme = useEditorStore((s) => s.theme);
+  const savedThemes = useEditorStore((s) => s.savedThemes);
+  const customThemeCss = useEditorStore((s) => s.customThemeCss);
+  const setMarkdown = useEditorStore((s) => s.setMarkdown);
+  const isStatsVisible = useEditorStore((s) => s.isStatsVisible);
+  const toggleStats = useEditorStore((s) => s.toggleStats);
   const currentDocument = useDocumentStore((state) => state.currentDocument);
   const recentDocuments = useDocumentStore((state) => state.recentDocuments);
   const isDirty = useDocumentStore((state) => state.isDirty);
@@ -460,10 +459,43 @@ export function TopNav() {
         return;
       }
 
-      const presetTheme = theme !== 'custom' && !savedThemes.some((item) => item.id === theme);
-      const html = presetTheme
-        ? await makeWeChatCompatible(previewElement.innerHTML, theme)
-        : convertLinksToFootnotes(`<style>${customThemeCss}</style>${previewElement.innerHTML}`);
+      const isPresetTheme = theme !== 'custom' && !savedThemes.some((item) => item.id === theme);
+
+      const statsHtml = isStatsVisible
+        ? (() => {
+            const { charCount, readTime } = calculateWordCount(markdown);
+            return `
+      <section style="
+        margin: 20px 10px;
+        text-align: center;
+        font-size: 14px;
+        color: #888;
+        letter-spacing: 0.5px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      ">
+        <span style="
+          display: inline-block;
+          padding: 4px 12px;
+          background-color: #f7f7f7;
+          border-radius: 100px;
+          border: 1px solid #eee;
+          white-space: nowrap;
+          line-height: 1.4;
+        ">
+          字数 ${charCount} <span style="margin: 0 4px; color: #ddd;">|</span> 约 ${readTime} 分钟
+        </span>
+      </section>
+    `;
+          })()
+        : '';
+
+      const html = await buildCopyHtml(
+        previewElement.innerHTML,
+        theme,
+        isPresetTheme,
+        customThemeCss,
+        statsHtml,
+      );
 
       const result = await copyRichContent(html, markdown);
       if (!result.ok) {
@@ -471,7 +503,7 @@ export function TopNav() {
         return;
       }
 
-      if (presetTheme) {
+      if (isPresetTheme) {
         if (isWeChatDarkThemeRisk(theme)) {
           toast.warning('当前为暗色主题，微信可能剥离深色背景导致文字不可见。建议使用浅色主题。');
         } else {

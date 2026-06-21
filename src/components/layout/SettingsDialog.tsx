@@ -38,27 +38,25 @@ function getDeviceLabel(deviceModel: string) {
 }
 
 export function SettingsDialog() {
-  const {
-    fontSize,
-    setFontSize,
-    aiApiConfig,
-    setAiApiConfig,
-    isSettingsOpen,
-    setSettingsOpen,
-    deviceModel,
-    customWidth,
-    customHeight,
-    isScrollSyncEnabled,
-    toggleScrollSync,
-    isStatsVisible,
-    toggleStats,
-    isHetiEnabled,
-    toggleHeti,
-    imageBasePath,
-    setImageBasePath,
-    theme,
-    savedThemes,
-  } = useEditorStore();
+  const fontSize = useEditorStore((s) => s.fontSize);
+  const setFontSize = useEditorStore((s) => s.setFontSize);
+  const aiApiConfig = useEditorStore((s) => s.aiApiConfig);
+  const setAiApiConfig = useEditorStore((s) => s.setAiApiConfig);
+  const isSettingsOpen = useEditorStore((s) => s.isSettingsOpen);
+  const setSettingsOpen = useEditorStore((s) => s.setSettingsOpen);
+  const deviceModel = useEditorStore((s) => s.deviceModel);
+  const customWidth = useEditorStore((s) => s.customWidth);
+  const customHeight = useEditorStore((s) => s.customHeight);
+  const isScrollSyncEnabled = useEditorStore((s) => s.isScrollSyncEnabled);
+  const toggleScrollSync = useEditorStore((s) => s.toggleScrollSync);
+  const isStatsVisible = useEditorStore((s) => s.isStatsVisible);
+  const toggleStats = useEditorStore((s) => s.toggleStats);
+  const isHetiEnabled = useEditorStore((s) => s.isHetiEnabled);
+  const toggleHeti = useEditorStore((s) => s.toggleHeti);
+  const imageBasePath = useEditorStore((s) => s.imageBasePath);
+  const setImageBasePath = useEditorStore((s) => s.setImageBasePath);
+  const theme = useEditorStore((s) => s.theme);
+  const savedThemes = useEditorStore((s) => s.savedThemes);
   const { snapshots } = useHistoryStore();
   const { theme: appTheme, setTheme } = useTheme();
   const [showApiKey, setShowApiKey] = useState(false);

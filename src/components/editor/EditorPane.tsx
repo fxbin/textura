@@ -220,6 +220,7 @@ export function EditorPane() {
     }
 
     let cancelled = false;
+    const cleanupRef: { current: (() => void) | null } = { current: null };
 
     (async () => {
       const { listen } = await import('@tauri-apps/api/event');
@@ -230,12 +231,9 @@ export function EditorPane() {
       if (cancelled) {
         unlisten();
       } else {
-        // Store for cleanup
         cleanupRef.current = unlisten;
       }
     })();
-
-    const cleanupRef: { current: (() => void) | null } = { current: null };
 
     return () => {
       cancelled = true;
