@@ -3,8 +3,8 @@ services:
   textura:
     # 生产环境使用预构建静态站点镜像
     # 请将此处的 image 替换为您实际构建/推送的镜像名称
-    # 例如: ghcr.io/your-username/textura:latest
-    image: textura:latest 
+    # 例如 GitHub Container Registry: ghcr.io/fxbin/textura:latest
+    image: textura:latest
     container_name: textura-web
     restart: always
     environment:
