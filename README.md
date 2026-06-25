@@ -4,12 +4,13 @@
   <img src="public/logo.png" alt="Textura Logo" width="120" />
   <br/>
   <h3>为极致阅读体验而生的下一代排版引擎</h3>
-  <p>基于 Next.js 15 + TailwindCSS v4 构建的现代 Markdown 微信排版工具</p>
+  <p>基于 Next.js + TailwindCSS v4 构建的现代 Markdown 微信排版工具</p>
 
   <p>
+    <a href="https://github.com/fxbin/textura"><img src="https://img.shields.io/badge/Source-fxbin/textura-181717?style=flat-square&logo=github" alt="Source" /></a>
     <a href="https://textura.top"><img src="https://img.shields.io/badge/Website-textura.top-007AFF?style=flat-square&logo=vercel" alt="Website" /></a>
     <img src="https://img.shields.io/badge/React-19-blue?style=flat-square&logo=react" alt="React 19" />
-    <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js 15" />
+    <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js" />
     <img src="https://img.shields.io/badge/TailwindCSS-v4-38B2AC?style=flat-square&logo=tailwind-css" alt="TailwindCSS" />
   </p>
 </div>
@@ -50,11 +51,11 @@
 
 Textura 是一个追求极致前沿 (Bleeding-edge) 体验的工程：
 
-- **框架**: [Next.js 15.1 (App Router)](https://nextjs.org/) + React 19
-- **样式**: [TailwindCSS v4.0](https://tailwindcss.com/) + Shadcn/UI + Framer Motion
-- **状态管理**: [Zustand](https://github.com/pmndrs/zustand) + Local Persistent + Zundo (Undo/Redo)
-- **文档引擎**: `react-markdown` + `remark-gfm` + `shiki` 语法高亮
-- **构建 & 容器**: 支持导出跨平台 Desktop 应用 (通过 Tauri / Electron) 准备。
+- **框架**: [Next.js 16 (App Router)](https://nextjs.org/) + React 19（已启用 React Compiler）
+- **样式**: [TailwindCSS v4](https://tailwindcss.com/) + Shadcn/UI（radix-ui）
+- **状态管理**: [Zustand](https://github.com/pmnds/zustand) + IndexedDB 持久化 + Zundo (Undo/Redo)
+- **文档引擎**: `markdown-it` + `highlight.js` 语法高亮
+- **桌面封装**: 基于 [Tauri 2](https://tauri.app/) 导出 Windows / macOS 跨平台应用
 
 ## 🚀 快速开始
 
@@ -62,7 +63,7 @@ Textura 是一个追求极致前沿 (Bleeding-edge) 体验的工程：
 
 \`\`\`bash
 # 1. 克隆代码
-git clone https://github.com/your-username/textura.git
+git clone https://github.com/fxbin/textura.git
 cd textura
 
 # 2. 安装依赖 
@@ -76,12 +77,17 @@ npm run dev
 
 ## 🤝 贡献指南
 
-1. Fork 本仓库
+欢迎参与 Textura 的建设！仓库地址：**https://github.com/fxbin/textura**
+
+1. Fork [本仓库](https://github.com/fxbin/textura)
 2. 创建您的特性分支 (`git checkout -b feature/AmazingFeature`)
 3. 提交您的更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 开启一个 Pull Request
 
+> 💡 AI 协作开发请参考根目录的 [`AGENTS.md`](AGENTS.md)，其中记录了项目的架构约束、禁止改动区与常用命令。
+
 ## 📄 许可协议
 
 本项目基于 MIT 协议进行分发。详情请参阅 [LICENSE](LICENSE) 文件。
+

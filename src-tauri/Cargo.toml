@@ -1,10 +1,10 @@
 [package]
 name = "textura"
-version = "1.0.0"
+version = "1.0.0-beta.4"
 description = "Textura - 公众号排版工具"
 authors = ["Textura Team"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/fxbin/textura"
 edition = "2021"
 
 [lib]
