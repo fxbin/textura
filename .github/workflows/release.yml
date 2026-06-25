@@ -5,6 +5,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# 同一 tag 重复推送时取消旧构建，避免重复发布草稿。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     permissions:
