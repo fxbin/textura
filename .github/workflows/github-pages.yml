@@ -31,6 +31,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify custom-domain config
+        if: ${{ vars.CUSTOM_DOMAIN == 'true' }}
+        run: |
+          if [ -z "${{ vars.DOMAIN_NAME }}" ]; then
+            echo "::error::CUSTOM_DOMAIN=true 但未配置 DOMAIN_NAME 仓库变量。"
+            echo "::error::请在 Settings → Secrets and variables → Actions → Variables 添加 DOMAIN_NAME，或将 CUSTOM_DOMAIN 改为 false。"
+            exit 1
+          fi
+
       - name: Build static export
         env:
           GITHUB_PAGES: "true"
@@ -38,7 +47,7 @@ jobs:
         run: npm run build
 
       - name: Add CNAME for custom domain
-        if: ${{ vars.CUSTOM_DOMAIN == 'true' && vars.DOMAIN_NAME != '' }}
+        if: ${{ vars.CUSTOM_DOMAIN == 'true' }}
         run: echo "${{ vars.DOMAIN_NAME }}" > out/CNAME
 
       - name: Upload artifact

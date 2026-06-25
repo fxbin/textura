@@ -3,6 +3,9 @@
 import * as React from 'react';
 import Image from 'next/image';
 import { toast } from 'sonner';
+
+// next/image 的 string src 不会自动拼接 basePath，需手动处理。
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 import {
   Check,
   ChevronDown,
@@ -531,7 +534,7 @@ export function TopNav() {
       <div className="flex min-w-0 items-center gap-3">
         <div className="group flex shrink-0 cursor-pointer items-center gap-2 transition-opacity hover:opacity-80">
           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
-            <Image src="/logo.png" alt="Textura Logo" width={32} height={32} className="object-cover" />
+            <Image src={`${BASE_PATH}/logo.png`} alt="Textura Logo" width={32} height={32} className="object-cover" />
           </div>
           <div className="flex flex-col justify-center">
             <span className="text-sm font-bold tracking-tight text-foreground/90">Textura</span>
