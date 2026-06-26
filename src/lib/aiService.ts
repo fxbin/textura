@@ -43,6 +43,14 @@ interface AiResponse {
   error?: string;
 }
 
+// SSE 流式响应的最小结构（仅取 content 所需字段）。
+interface ChatCompletionChunk {
+  choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+}
+interface AnthropicStreamEvent {
+  delta?: { text?: string };
+}
+
 // ── Shared utilities ──
 
 const AI_FETCH_TIMEOUT = 60_000;       // 60s for initial connection
@@ -60,9 +68,9 @@ function createTimeoutController(ms: number): { controller: AbortController; cle
 }
 
 /** Read an SSE stream with inter-chunk timeout and parse-error tracking. */
-async function readSseStream(
+async function readSseStream<T>(
   response: Response,
-  extractContent: (json: unknown) => string,
+  extractContent: (json: T) => string,
   onChunk: (accumulated: string) => void,
 ): Promise<AiResponse> {
   const reader = response.body?.getReader();
@@ -281,7 +289,7 @@ async function callOpenAI(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.choices?.[0]?.delta?.content || '',
+        (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
         onChunk,
       );
     }
@@ -330,7 +338,7 @@ async function callAnthropic(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.delta?.text || '',
+        (json: AnthropicStreamEvent) => json.delta?.text || '',
         onChunk,
       );
     }
@@ -377,7 +385,7 @@ async function callDeepSeek(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.choices?.[0]?.delta?.content || '',
+        (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
         onChunk,
       );
     }
@@ -512,7 +520,7 @@ async function callDoubao(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.choices?.[0]?.delta?.content || '',
+        (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
         onChunk,
       );
     }
@@ -559,7 +567,7 @@ async function callQwen(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.choices?.[0]?.delta?.content || '',
+        (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
         onChunk,
       );
     }
@@ -606,7 +614,7 @@ async function callZhipu(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.choices?.[0]?.delta?.content || '',
+        (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
         onChunk,
       );
     }
@@ -658,7 +666,7 @@ async function callCustomApi(
     if (onChunk && response.body) {
       return await readSseStream(
         response,
-        (json: any) => json.choices?.[0]?.delta?.content || '',
+        (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
         onChunk,
       );
     }

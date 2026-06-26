@@ -176,7 +176,7 @@ export async function makeWeChatCompatible(html: string, themeId: string): Promi
         if (ratio <= LATIN_RATIO_THRESHOLD) return;
 
         // Reset spacing on the block element itself
-        let currentStyle = node.getAttribute('style') || '';
+        const currentStyle = node.getAttribute('style') || '';
         node.setAttribute('style', stripSpacing(currentStyle));
 
         // Also reset spacing on inline children that may carry their own values
