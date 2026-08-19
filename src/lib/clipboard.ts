@@ -34,6 +34,23 @@ function legacyCopyHtml(html: string, text: string): ClipboardCopyResult {
   }
 }
 
+async function copyPlainTextAsFailedRichCopy(text: string): Promise<ClipboardCopyResult> {
+  if (!navigator.clipboard?.writeText) {
+    return { ok: false, error: new Error('Rich clipboard and plain-text fallback are unavailable.') };
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    return {
+      ok: false,
+      method: 'text',
+      error: new Error('富文本复制不可用，已仅复制纯文本。请检查浏览器剪贴板权限后重试。'),
+    };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 export async function copyRichContent(html: string, text: string): Promise<ClipboardCopyResult> {
   if (typeof window === 'undefined') {
     return { ok: false, error: new Error('Clipboard is unavailable during SSR.') };
@@ -54,15 +71,12 @@ export async function copyRichContent(html: string, text: string): Promise<Clipb
     if (fallback.ok) {
       return fallback;
     }
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return { ok: true, method: 'text' };
-      } catch (textError) {
-        return { ok: false, error: textError };
-      }
+
+    const textFallback = await copyPlainTextAsFailedRichCopy(text);
+    if (textFallback.method === 'text') {
+      return textFallback;
     }
-    return { ok: false, error };
+    return { ok: false, error: textFallback.error || error };
   }
 
   const fallback = legacyCopyHtml(html, text);
@@ -70,14 +84,5 @@ export async function copyRichContent(html: string, text: string): Promise<Clipb
     return fallback;
   }
 
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return { ok: true, method: 'text' };
-    } catch (error) {
-      return { ok: false, error };
-    }
-  }
-
-  return { ok: false, error: new Error('Clipboard API and fallback are unavailable.') };
+  return await copyPlainTextAsFailedRichCopy(text);
 }
