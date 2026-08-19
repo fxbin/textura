@@ -8,9 +8,7 @@ let dbInstance: IDBDatabase | null = null;
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDB(): Promise<IDBDatabase> {
-  // Return cached connection if still open
   if (dbInstance) return Promise.resolve(dbInstance);
-  // Return in-flight promise if a connection is being opened
   if (dbPromise) return dbPromise;
 
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
@@ -27,7 +25,6 @@ function openDB(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       const db = request.result;
       dbInstance = db;
-      // Reset cache when the connection is unexpectedly closed
       db.onclose = () => {
         dbInstance = null;
         dbPromise = null;
@@ -51,59 +48,131 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+async function readSerializedItem(name: string): Promise<string | null> {
+  const db = await openDB();
+  return await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(name);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+  });
+}
+
+async function writeSerializedItem(name: string, serialized: string): Promise<void> {
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.put(serialized, name);
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+  });
+}
+
+async function deleteSerializedItem(name: string): Promise<void> {
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.delete(name);
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
+  });
+}
+
+function readLegacyLocalStorage(name: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(name);
+  } catch {
+    return null;
+  }
+}
+
+function removeLegacyLocalStorage(name: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(name);
+  } catch {
+    // Legacy cleanup failure should not invalidate a successful IndexedDB migration.
+  }
+}
+
+function parseStorageValue(serialized: string, name: string): StorageValue<unknown> | null {
+  try {
+    return JSON.parse(serialized) as StorageValue<unknown>;
+  } catch (error) {
+    console.error(`[indexedDBStorage] Invalid persisted JSON for ${name}:`, error);
+    return null;
+  }
+}
+
+function reportStorageError(action: string, name: string, error: unknown) {
+  console.error(`[indexedDBStorage] Failed to ${action} ${name}:`, error);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('textura-storage-error', {
+      detail: { action, name, error },
+    }));
+  }
+}
+
 export const indexedDBStorage: PersistStorage<unknown> = {
   getItem: async (name: string): Promise<StorageValue<unknown> | null> => {
     try {
-      const db = await openDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.get(name);
-
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-          const result = request.result;
-          if (result) {
-            resolve(JSON.parse(result) as StorageValue<unknown>);
-          } else {
-            resolve(null);
-          }
-        };
-      });
-    } catch {
-      return null;
+      const serialized = await readSerializedItem(name);
+      if (serialized) {
+        return parseStorageValue(serialized, name);
+      }
+    } catch (error) {
+      // IndexedDB may be blocked by browser privacy settings. Continue to the legacy
+      // fallback so an existing localStorage document/history is still recoverable.
+      reportStorageError('read', name, error);
     }
+
+    const legacy = readLegacyLocalStorage(name);
+    if (!legacy) return null;
+
+    const parsed = parseStorageValue(legacy, name);
+    if (!parsed) return null;
+
+    try {
+      await writeSerializedItem(name, legacy);
+      removeLegacyLocalStorage(name);
+    } catch (error) {
+      // Migration failure must never hide otherwise valid legacy data. Keep the old
+      // localStorage entry and return it for this session.
+      reportStorageError('migrate', name, error);
+    }
+
+    return parsed;
   },
 
   setItem: async (name: string, value: StorageValue<unknown>): Promise<void> => {
-    try {
-      const db = await openDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.put(JSON.stringify(value), name);
+    if (typeof window === 'undefined') return;
 
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve();
-      });
-    } catch {
-      // Ignore non-browser environments such as SSR/build.
+    try {
+      await writeSerializedItem(name, JSON.stringify(value));
+    } catch (error) {
+      // Zustand persist does not consistently await async storage writes; throwing here
+      // can become an unhandled rejection. Emit a central event instead.
+      reportStorageError('persist', name, error);
     }
   },
 
   removeItem: async (name: string): Promise<void> => {
-    try {
-      const db = await openDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete(name);
+    if (typeof window === 'undefined') return;
 
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve();
-      });
-    } catch {
-      // Ignore non-browser environments such as SSR/build.
+    try {
+      await deleteSerializedItem(name);
+      removeLegacyLocalStorage(name);
+    } catch (error) {
+      reportStorageError('remove', name, error);
     }
   },
 };
