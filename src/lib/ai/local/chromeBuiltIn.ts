@@ -26,12 +26,13 @@ interface LanguageModelApiLike {
 }
 
 type GlobalWithLanguageModel = typeof globalThis & { LanguageModel?: LanguageModelApiLike };
+type NavigatorWithUserActivation = Navigator & { userActivation?: { isActive: boolean } };
 
 export class ChromeBuiltInAiError extends Error {
   constructor(
     message: string,
     public readonly code: 'api-missing' | 'language-unsupported' | 'unavailable' | 'user-activation-required' | 'session-create-failed',
-    public readonly cause?: unknown,
+    public readonly originalError?: unknown,
   ) {
     super(message);
     this.name = 'ChromeBuiltInAiError';
@@ -49,7 +50,7 @@ function getLanguageModelApi(): LanguageModelApiLike | null {
 
 function buildExpectedOptions(request: ChromeBuiltInCapabilityRequest) {
   const inputLanguage = (request.inputLanguage || 'en').trim().toLowerCase();
-  const outputLanguage = (request.outputLanguage || 'en').trim().toLowerCase();
+  const outputLanguage = (request.outputLanguage || inputLanguage).trim().toLowerCase();
   const systemPromptLanguage = (request.systemPromptLanguage || 'en').trim().toLowerCase();
   return {
     inputLanguage,
@@ -113,7 +114,8 @@ export async function createChromeBuiltInPromptSession(request: Omit<ChromeBuilt
   if (!api) throw new ChromeBuiltInAiError('Chrome Built-in AI is not available in this browser.', 'api-missing');
   if (!capability.canCreateSession) throw new ChromeBuiltInAiError('Chrome Built-in AI is unavailable on this device.', 'unavailable', capability.error);
 
-  if (capability.requiresDownload && typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.isActive) {
+  const activation = typeof navigator === 'undefined' ? undefined : (navigator as NavigatorWithUserActivation).userActivation;
+  if (capability.requiresDownload && activation && !activation.isActive) {
     throw new ChromeBuiltInAiError('Model download requires direct user interaction.', 'user-activation-required');
   }
 
