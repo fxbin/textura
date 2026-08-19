@@ -58,13 +58,96 @@ export const md = new MarkdownIt({
         }
 
         const dots = '<div style="margin-bottom: 12px; white-space: nowrap;"><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ff5f56; margin-right: 6px;"></span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #ffbd2e; margin-right: 6px;"></span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #27c93f;"></span></div>';
-        
+
         // Preserve language class for non-hljs languages (like mermaid)
         const langClass = lang ? `language-${lang}` : '';
         return `<pre>${dots}<code class="hljs ${langClass}">${codeContent}</code></pre>`;
     }
 });
 
+const BLOCKED_HTML_TAGS = [
+    'script',
+    'style',
+    'iframe',
+    'object',
+    'embed',
+    'form',
+    'input',
+    'button',
+    'textarea',
+    'select',
+    'option',
+    'link',
+    'meta',
+    'base',
+    'template',
+    'svg',
+    'math',
+];
+
+const URL_ATTRIBUTES = new Set(['href', 'src', 'poster', 'action', 'formaction', 'xlink:href']);
+
+function isSafeUrl(value: string, attribute: string, tagName: string): boolean {
+    const normalized = value.replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+    if (!normalized) return true;
+
+    if (normalized.startsWith('#') || normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../')) {
+        return true;
+    }
+
+    if (/^(https?:|mailto:|tel:|blob:)/.test(normalized)) {
+        return true;
+    }
+
+    if (attribute === 'src' && tagName === 'IMG' && /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp);/i.test(value.trim())) {
+        return true;
+    }
+
+    return false;
+}
+
+function sanitizeInlineStyle(value: string): string {
+    return value
+        .split(';')
+        .map(part => part.trim())
+        .filter(Boolean)
+        .filter(part => {
+            const normalized = part.replace(/\s+/g, '').toLowerCase();
+            return !/(?:url\(|expression\(|javascript:|vbscript:|behavior:|-moz-binding)/.test(normalized);
+        })
+        .join('; ');
+}
+
+function sanitizeRenderedDocument(doc: Document) {
+    BLOCKED_HTML_TAGS.forEach(tag => {
+        doc.querySelectorAll(tag).forEach(node => node.remove());
+    });
+
+    doc.querySelectorAll('*').forEach(node => {
+        Array.from(node.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+
+            if (name === 'style') {
+                const safeStyle = sanitizeInlineStyle(attribute.value);
+                if (safeStyle) {
+                    node.setAttribute(attribute.name, safeStyle);
+                } else {
+                    node.removeAttribute(attribute.name);
+                }
+                return;
+            }
+
+            if (name === 'srcdoc' || name.startsWith('on')) {
+                node.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (URL_ATTRIBUTES.has(name) && !isSafeUrl(attribute.value, name, node.tagName)) {
+                node.removeAttribute(attribute.name);
+            }
+        });
+    });
+}
 
 export function applyTheme(html: string, themeId: string, fontSize?: number) {
     // In SSR environment, DOMParser might not be available.
@@ -88,6 +171,7 @@ export function applyTheme(html: string, themeId: string, fontSize?: number) {
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
+    sanitizeRenderedDocument(doc);
 
     // Specific inline overrides to prevent headings from uninheriting styles
     const headingInlineOverrides: Record<string, string> = {
@@ -96,7 +180,6 @@ export function applyTheme(html: string, themeId: string, fontSize?: number) {
         a: 'color: inherit !important; text-decoration: none !important; border-bottom: 1px solid currentColor !important; background-color: transparent !important;',
         code: 'color: inherit !important; background-color: transparent !important; border: none !important; padding: 0 !important;',
     };
-
 
     const getSingleImageNode = (p: HTMLParagraphElement): HTMLElement | null => {
         const children = Array.from(p.childNodes).filter(n =>
@@ -172,7 +255,6 @@ export function applyTheme(html: string, themeId: string, fontSize?: number) {
     });
 
     Object.keys(style).forEach((selector) => {
-
         if (selector === 'pre code') return;
         const elements = doc.querySelectorAll(selector);
         elements.forEach(el => {
@@ -183,23 +265,32 @@ export function applyTheme(html: string, themeId: string, fontSize?: number) {
         });
     });
 
-    // Tailwind preflight removes native list markers. Restore explicit markers.
-    doc.querySelectorAll('ul').forEach(ul => {
-        const currentStyle = ul.getAttribute('style') || '';
-        ul.setAttribute('style', `${currentStyle}; list-style-type: disc !important; list-style-position: outside;`);
-    });
-    doc.querySelectorAll('ul ul').forEach(ul => {
-        const currentStyle = ul.getAttribute('style') || '';
-        ul.setAttribute('style', `${currentStyle}; list-style-type: circle !important;`);
-    });
-    doc.querySelectorAll('ul ul ul').forEach(ul => {
-        const currentStyle = ul.getAttribute('style') || '';
-        ul.setAttribute('style', `${currentStyle}; list-style-type: square !important;`);
-    });
-    doc.querySelectorAll('ol').forEach(ol => {
-        const currentStyle = ol.getAttribute('style') || '';
-        ol.setAttribute('style', `${currentStyle}; list-style-type: decimal !important; list-style-position: outside;`);
-    });
+    // Tailwind preflight removes native list markers. Restore markers only when
+    // the active theme did not explicitly choose a list style of its own.
+    const themeDefinesUlStyle = /list-style(?:-type)?\s*:/i.test(style.ul || '');
+    const themeDefinesOlStyle = /list-style(?:-type)?\s*:/i.test(style.ol || '');
+
+    if (!themeDefinesUlStyle) {
+        doc.querySelectorAll('ul').forEach(ul => {
+            const currentStyle = ul.getAttribute('style') || '';
+            ul.setAttribute('style', `${currentStyle}; list-style-type: disc !important; list-style-position: outside;`);
+        });
+        doc.querySelectorAll('ul ul').forEach(ul => {
+            const currentStyle = ul.getAttribute('style') || '';
+            ul.setAttribute('style', `${currentStyle}; list-style-type: circle !important;`);
+        });
+        doc.querySelectorAll('ul ul ul').forEach(ul => {
+            const currentStyle = ul.getAttribute('style') || '';
+            ul.setAttribute('style', `${currentStyle}; list-style-type: square !important;`);
+        });
+    }
+
+    if (!themeDefinesOlStyle) {
+        doc.querySelectorAll('ol').forEach(ol => {
+            const currentStyle = ol.getAttribute('style') || '';
+            ol.setAttribute('style', `${currentStyle}; list-style-type: decimal !important; list-style-position: outside;`);
+        });
+    }
 
     const hljsLight: Record<string, string> = {
         'hljs-comment': 'color: #6a737d; font-style: italic;',

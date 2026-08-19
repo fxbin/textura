@@ -24,17 +24,17 @@ turndownService.use(gfm);
 turndownService.addRule('image', {
   filter: 'img',
   replacement: (_content: string, node: TurndownImageNode) => {
-    const alt = node.alt || 'image';
+    const alt = (node.alt || 'image').replace(/([\[\]])/g, '\\$1');
     const src = node.src || '';
-    const title = node.title || '';
+    const title = (node.title || '').replace(/"/g, '\\"');
 
-    if (src.startsWith('data:image')) {
-      const typeMatch = src.match(/data:image\/(\w+);/);
-      const type = typeMatch ? typeMatch[1] : 'image';
-      return `![${alt}](data:image/${type};base64,...)${title ? ` "${title}"` : ''}\n`;
+    if (!src) {
+      return '';
     }
 
-    return `![${alt}](${src})${title ? ` "${title}"` : ''}\n`;
+    // data:image 必须保留真实内容。此前替换成字面量 "..." 会生成必然失效的 Markdown 图片。
+    const titlePart = title ? ` "${title}"` : '';
+    return `![${alt}](${src}${titlePart})\n`;
   },
 });
 
