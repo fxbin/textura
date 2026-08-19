@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { indexedDBStorage } from './indexedDBStorage';
 
 export interface DocumentSnapshot {
   id: string;
@@ -69,6 +70,7 @@ export const useHistoryStore = create<HistoryState>()(
     }),
     {
       name: 'textura-history',
+      storage: indexedDBStorage,
       skipHydration: true,
       partialize: (state) => ({
         snapshots: state.snapshots,
