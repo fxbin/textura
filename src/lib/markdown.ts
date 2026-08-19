@@ -106,6 +106,18 @@ function isSafeUrl(value: string, attribute: string, tagName: string): boolean {
     return false;
 }
 
+function sanitizeInlineStyle(value: string): string {
+    return value
+        .split(';')
+        .map(part => part.trim())
+        .filter(Boolean)
+        .filter(part => {
+            const normalized = part.replace(/\s+/g, '').toLowerCase();
+            return !/(?:url\(|expression\(|javascript:|vbscript:|behavior:|-moz-binding)/.test(normalized);
+        })
+        .join('; ');
+}
+
 function sanitizeRenderedDocument(doc: Document) {
     BLOCKED_HTML_TAGS.forEach(tag => {
         doc.querySelectorAll(tag).forEach(node => node.remove());
@@ -115,8 +127,17 @@ function sanitizeRenderedDocument(doc: Document) {
         Array.from(node.attributes).forEach(attribute => {
             const name = attribute.name.toLowerCase();
 
-            // Raw HTML is content, not a styling escape hatch. Theme styles are injected later.
-            if (name === 'style' || name === 'srcdoc' || name.startsWith('on')) {
+            if (name === 'style') {
+                const safeStyle = sanitizeInlineStyle(attribute.value);
+                if (safeStyle) {
+                    node.setAttribute(attribute.name, safeStyle);
+                } else {
+                    node.removeAttribute(attribute.name);
+                }
+                return;
+            }
+
+            if (name === 'srcdoc' || name.startsWith('on')) {
                 node.removeAttribute(attribute.name);
                 return;
             }
