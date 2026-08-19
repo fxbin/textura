@@ -1,8 +1,11 @@
-
 /**
  * 智能排版引擎
  * 用于将纯文本转换为结构化的 Markdown
  */
+
+function isMarkdownListLine(line: string): boolean {
+  return /^(?:[-*+]\s+|\d+\.\s+)/.test(line);
+}
 
 export function autoFormatMarkdown(text: string): string {
   let lines = text.split('\n');
@@ -57,7 +60,7 @@ export function autoFormatMarkdown(text: string): string {
   }
 
   // 5. 智能段落间距
-  // 确保非空行之间有空行，除非是列表
+  // 确保非空行之间有空行，列表项之间保持紧凑，避免 Markdown loose list 额外生成 <p>
   let result = '';
   for (let i = 0; i < formattedLines.length; i++) {
     const current = formattedLines[i];
@@ -66,16 +69,12 @@ export function autoFormatMarkdown(text: string): string {
     result += current + '\n';
 
     // 如果当前行不是空行，且下一行也不是空行，且不是标题或列表，则插入空行
-    // 简单的策略：只要不是空行，就多加一个换行（Markdown 标准段落）
-    // 但要注意列表之间不能加空行太频繁
-    
+    // 普通段落之间增加一个空行；无序/有序列表项保持连续，避免列表段落化。
     const isHeader = /^#/.test(current);
-    const isList = /^- /.test(current);
+    const isList = isMarkdownListLine(current);
     const isEmpty = current.trim() === '';
 
     if (!isEmpty && !isHeader && !isList && next && next.trim() !== '') {
-       // 这是一个普通段落行，且下一行也是内容，为了分段，插入空行
-       // 或者是列表结束了
        result += '\n';
     }
   }
