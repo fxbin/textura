@@ -148,8 +148,9 @@ export function formatWeChatLinks(text: string): string {
   const links: string[] = [];
   let counter = 1;
 
-  const newText = text.replace(linkRegex, (match, title, url) => {
-    if (match.startsWith('!')) return match;
+  const newText = text.replace(linkRegex, (match, title, url, offset, source) => {
+    // 对 ![alt](url) 而言，正则匹配从 '[' 开始，因此需要检查匹配位置前的字符。
+    if (offset > 0 && source[offset - 1] === '!') return match;
 
     links.push(`${counter}. ${title}: ${url}`);
     return `${title} <sup>[${counter++}]</sup>`;
