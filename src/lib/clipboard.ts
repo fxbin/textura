@@ -34,23 +34,6 @@ function legacyCopyHtml(html: string, text: string): ClipboardCopyResult {
   }
 }
 
-async function copyPlainTextAsFailedRichCopy(text: string): Promise<ClipboardCopyResult> {
-  if (!navigator.clipboard?.writeText) {
-    return { ok: false, error: new Error('Rich clipboard and plain-text fallback are unavailable.') };
-  }
-
-  try {
-    await navigator.clipboard.writeText(text);
-    return {
-      ok: false,
-      method: 'text',
-      error: new Error('富文本复制不可用，已仅复制纯文本。请检查浏览器剪贴板权限后重试。'),
-    };
-  } catch (error) {
-    return { ok: false, error };
-  }
-}
-
 export async function copyRichContent(html: string, text: string): Promise<ClipboardCopyResult> {
   if (typeof window === 'undefined') {
     return { ok: false, error: new Error('Clipboard is unavailable during SSR.') };
@@ -72,11 +55,12 @@ export async function copyRichContent(html: string, text: string): Promise<Clipb
       return fallback;
     }
 
-    const textFallback = await copyPlainTextAsFailedRichCopy(text);
-    if (textFallback.method === 'text') {
-      return textFallback;
-    }
-    return { ok: false, error: textFallback.error || error };
+    return {
+      ok: false,
+      error: error instanceof Error
+        ? error
+        : new Error('富文本复制不可用，请检查浏览器剪贴板权限。'),
+    };
   }
 
   const fallback = legacyCopyHtml(html, text);
@@ -84,5 +68,10 @@ export async function copyRichContent(html: string, text: string): Promise<Clipb
     return fallback;
   }
 
-  return await copyPlainTextAsFailedRichCopy(text);
+  // 不再静默降级到 writeText：纯文本复制会让 UI 误报“可直接粘贴到公众号”，
+  // 但主题样式实际上已经全部丢失。富文本不可用时明确返回失败。
+  return {
+    ok: false,
+    error: new Error('当前浏览器不支持富文本剪贴板，请检查权限或更换浏览器后重试。'),
+  };
 }
