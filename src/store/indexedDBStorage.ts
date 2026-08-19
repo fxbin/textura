@@ -113,6 +113,15 @@ function parseStorageValue(serialized: string, name: string): StorageValue<unkno
   }
 }
 
+function reportStorageError(action: string, name: string, error: unknown) {
+  console.error(`[indexedDBStorage] Failed to ${action} ${name}:`, error);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('textura-storage-error', {
+      detail: { action, name, error },
+    }));
+  }
+}
+
 export const indexedDBStorage: PersistStorage<unknown> = {
   getItem: async (name: string): Promise<StorageValue<unknown> | null> => {
     try {
@@ -123,7 +132,7 @@ export const indexedDBStorage: PersistStorage<unknown> = {
     } catch (error) {
       // IndexedDB may be blocked by browser privacy settings. Continue to the legacy
       // fallback so an existing localStorage document/history is still recoverable.
-      console.error(`[indexedDBStorage] Failed to read ${name} from IndexedDB:`, error);
+      reportStorageError('read', name, error);
     }
 
     const legacy = readLegacyLocalStorage(name);
@@ -138,7 +147,7 @@ export const indexedDBStorage: PersistStorage<unknown> = {
     } catch (error) {
       // Migration failure must never hide otherwise valid legacy data. Keep the old
       // localStorage entry and return it for this session.
-      console.error(`[indexedDBStorage] Failed to migrate ${name} to IndexedDB:`, error);
+      reportStorageError('migrate', name, error);
     }
 
     return parsed;
@@ -150,9 +159,9 @@ export const indexedDBStorage: PersistStorage<unknown> = {
     try {
       await writeSerializedItem(name, JSON.stringify(value));
     } catch (error) {
-      console.error(`[indexedDBStorage] Failed to persist ${name}:`, error);
-      // Do not silently swallow quota/transaction failures: callers should be able to observe persistence failure.
-      throw error;
+      // Zustand persist does not consistently await async storage writes; throwing here
+      // can become an unhandled rejection. Emit a central event instead.
+      reportStorageError('persist', name, error);
     }
   },
 
@@ -163,8 +172,7 @@ export const indexedDBStorage: PersistStorage<unknown> = {
       await deleteSerializedItem(name);
       removeLegacyLocalStorage(name);
     } catch (error) {
-      console.error(`[indexedDBStorage] Failed to remove ${name}:`, error);
-      throw error;
+      reportStorageError('remove', name, error);
     }
   },
 };
