@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { toast } from 'sonner';
 import { EditorPane } from '@/components/editor/EditorPane';
 import { DocumentDetailBar } from '@/components/layout/DocumentDetailBar';
 import { PreviewPane } from '@/components/editor/PreviewPane';
@@ -26,6 +27,18 @@ export default function Home() {
 
   // Enable scroll synchronization
   useScrollSync();
+
+  React.useEffect(() => {
+    const handleStorageError = () => {
+      toast.error('本地数据持久化失败。请检查浏览器存储权限或可用空间，重要内容建议立即下载 Markdown 备份。', {
+        id: 'textura-storage-error',
+        duration: 8000,
+      });
+    };
+
+    window.addEventListener('textura-storage-error', handleStorageError);
+    return () => window.removeEventListener('textura-storage-error', handleStorageError);
+  }, []);
 
   // Detect mobile viewport (below 768px)
   const [isMobile, setIsMobile] = React.useState(false);
