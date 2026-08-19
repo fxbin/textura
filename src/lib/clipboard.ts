@@ -54,15 +54,13 @@ export async function copyRichContent(html: string, text: string): Promise<Clipb
     if (fallback.ok) {
       return fallback;
     }
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return { ok: true, method: 'text' };
-      } catch (textError) {
-        return { ok: false, error: textError };
-      }
-    }
-    return { ok: false, error };
+
+    return {
+      ok: false,
+      error: error instanceof Error
+        ? error
+        : new Error('富文本复制不可用，请检查浏览器剪贴板权限。'),
+    };
   }
 
   const fallback = legacyCopyHtml(html, text);
@@ -70,14 +68,10 @@ export async function copyRichContent(html: string, text: string): Promise<Clipb
     return fallback;
   }
 
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return { ok: true, method: 'text' };
-    } catch (error) {
-      return { ok: false, error };
-    }
-  }
-
-  return { ok: false, error: new Error('Clipboard API and fallback are unavailable.') };
+  // 不再静默降级到 writeText：纯文本复制会让 UI 误报“可直接粘贴到公众号”，
+  // 但主题样式实际上已经全部丢失。富文本不可用时明确返回失败。
+  return {
+    ok: false,
+    error: new Error('当前浏览器不支持富文本剪贴板，请检查权限或更换浏览器后重试。'),
+  };
 }

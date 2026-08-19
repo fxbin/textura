@@ -51,7 +51,7 @@ export function PreviewPane() {
   const setPreviewViewportRef = React.useCallback((node: HTMLDivElement | null) => {
     registerPreviewScroller(node);
   }, [registerPreviewScroller]);
-  const contentRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLElement>(null);
 
   React.useEffect(() => {
     setMounted(true);
@@ -164,13 +164,12 @@ export function PreviewPane() {
 
   const renderContent = () => (
     <div
-      id="print-area"
       className={cn(
         'flex-1 overflow-y-auto overflow-x-hidden no-scrollbar bg-white h-full',
         deviceModel === 'pc' ? 'px-8 md:px-12 lg:px-16 py-8' : 'px-0'
       )}
     >
-      <div className="min-h-full" ref={contentRef}>
+      <div className="min-h-full">
         {!mounted ? (
           <div className="flex h-32 w-full items-center justify-center">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
@@ -193,6 +192,8 @@ export function PreviewPane() {
             {isPresetTheme ? (
               // WeChat Mode: Raw HTML with inline styles
               <div
+                id="print-area"
+                ref={contentRef as React.RefObject<HTMLDivElement | null>}
                 className={cn(isHetiEnabled && 'heti')}
                 dangerouslySetInnerHTML={{ __html: htmlContent }}
                 style={{
@@ -204,6 +205,8 @@ export function PreviewPane() {
               <>
                 <style dangerouslySetInnerHTML={{ __html: customThemeCss }} />
                 <article
+                  id="print-area"
+                  ref={contentRef as React.RefObject<HTMLElement | null>}
                   className={cn('heti', 'prose prose-slate max-w-none p-5 pb-10')}
                   style={{
                     fontSize: `${fontSize}px`,
