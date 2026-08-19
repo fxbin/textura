@@ -385,6 +385,7 @@ export const useEditorStore = create<EditorState>()(
           isSidebarOpen: state.isSidebarOpen,
           isScrollSyncEnabled: state.isScrollSyncEnabled,
           isStatsVisible: state.isStatsVisible,
+          isHetiEnabled: state.isHetiEnabled,
           imageBasePath: state.imageBasePath,
           hasSeenOnboarding: state.hasSeenOnboarding,
           aiProvider: state.aiProvider,
