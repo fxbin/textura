@@ -1,5 +1,7 @@
 import { isChromeBuiltInTextLanguage } from './chromeBuiltIn';
-import type { AiRouteDecision, AiRouteRequest } from './types';
+import type { AiRouteDecision, AiRouteRequest, LocalAiTask } from './types';
+
+const PROMPT_LOCAL_TASKS = new Set<LocalAiTask>(['polish', 'expand', 'fix']);
 
 export function inferPrimaryTextLanguage(text: string): 'zh' | 'ja' | 'en' | 'und' {
   if (!text.trim()) return 'und';
@@ -23,12 +25,31 @@ export function routeAiExecution(request: AiRouteRequest): AiRouteDecision {
     };
   }
 
+  if (!PROMPT_LOCAL_TASKS.has(request.task)) {
+    return request.mode === 'chrome-built-in'
+      ? {
+          provider: 'chrome-built-in',
+          canExecute: false,
+          reason: 'local-task-unsupported',
+          localAvailability: request.localCapability?.availability || 'unavailable',
+          fallbackAllowed: false,
+        }
+      : {
+          provider: 'cloud',
+          canExecute: true,
+          reason: 'local-task-unsupported',
+          cloudProvider,
+          localAvailability: request.localCapability?.availability,
+          fallbackAllowed: true,
+        };
+  }
+
   const languageSupported =
     isChromeBuiltInTextLanguage(request.inputLanguage) &&
     isChromeBuiltInTextLanguage(outputLanguage);
 
   if (request.mode === 'chrome-built-in') {
-    if (!languageSupported || !request.localCapability || request.localCapability.availability === 'unavailable') {
+    if (!languageSupported) {
       return {
         provider: 'chrome-built-in',
         canExecute: false,
@@ -38,11 +59,31 @@ export function routeAiExecution(request: AiRouteRequest): AiRouteDecision {
       };
     }
 
+    if (!request.localCapability || request.localCapability.availability === 'unavailable') {
+      return {
+        provider: 'chrome-built-in',
+        canExecute: false,
+        reason: 'explicit-local-unavailable',
+        localAvailability: request.localCapability?.availability || 'unavailable',
+        fallbackAllowed: false,
+      };
+    }
+
+    if (request.localCapability.availability !== 'available') {
+      return {
+        provider: 'chrome-built-in',
+        canExecute: false,
+        reason: 'local-download-required',
+        localAvailability: request.localCapability.availability,
+        fallbackAllowed: false,
+      };
+    }
+
     return {
       provider: 'chrome-built-in',
       canExecute: true,
       reason: 'explicit-local',
-      localAvailability: request.localCapability.availability,
+      localAvailability: 'available',
       fallbackAllowed: false,
     };
   }
@@ -69,11 +110,22 @@ export function routeAiExecution(request: AiRouteRequest): AiRouteDecision {
     };
   }
 
+  if (request.localCapability.availability !== 'available') {
+    return {
+      provider: 'cloud',
+      canExecute: true,
+      reason: 'local-download-required',
+      cloudProvider,
+      localAvailability: request.localCapability.availability,
+      fallbackAllowed: true,
+    };
+  }
+
   return {
     provider: 'chrome-built-in',
     canExecute: true,
     reason: 'local-supported',
-    localAvailability: request.localCapability.availability,
+    localAvailability: 'available',
     fallbackAllowed: true,
   };
 }

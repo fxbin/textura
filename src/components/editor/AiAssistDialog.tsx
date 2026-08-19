@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useEditorStore } from '@/store/useEditorStore';
+import { useLocalAiStore } from '@/store/localAiStore';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -11,12 +12,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, ExternalLink, ArrowRight, Bot, Sparkles, Zap, Loader2, Settings } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Copy, ExternalLink, ArrowRight, Bot, Sparkles, Zap, Loader2, Settings, Square } from 'lucide-react';
 import { toast } from 'sonner';
-import { callAiFormatting, type AiTaskMode } from '@/lib/aiService';
+import type { AiTaskMode } from '@/lib/aiService';
+import { executeAiTask, type AiExecutionMeta } from '@/lib/ai/local';
 import { openExternalLink } from '@/lib/link';
 
 interface AiAssistDialogProps {
@@ -40,33 +42,52 @@ const TASK_MODES: { id: AiTaskMode; label: string }[] = [
   { id: 'fix', label: '纠错' },
 ];
 
+const LOCAL_PROMPT_TASKS = new Set<AiTaskMode>(['polish', 'summarize', 'expand', 'fix']);
+
+function hasCloudConfig(provider: string, apiKey: string, customApiUrl?: string) {
+  if (provider === 'none') return false;
+  if (provider === 'ollama') return true;
+  if (provider === 'custom' && !customApiUrl?.trim()) return false;
+  return Boolean(apiKey.trim());
+}
+
+function executionModeLabel(mode: 'smart' | 'chrome-built-in' | 'cloud') {
+  if (mode === 'smart') return '智能选择';
+  if (mode === 'chrome-built-in') return 'Chrome 本地 AI';
+  return '仅云端';
+}
+
 export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDialogProps) {
   const { markdown, setMarkdown, aiProvider, setAiProvider, aiApiConfig, setSettingsOpen } = useEditorStore();
+  const executionMode = useLocalAiStore((s) => s.executionMode);
   const [resultText, setResultText] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [mode, setMode] = React.useState<'api' | 'manual'>('api');
   const [taskMode, setTaskMode] = React.useState<AiTaskMode>('format');
+  const [lastExecution, setLastExecution] = React.useState<AiExecutionMeta | null>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
-  // Determine the content to process: selected text or full document
   const effectiveContent = selectedText && selectedText.trim() ? selectedText : markdown;
   const isProcessingSelection = Boolean(selectedText && selectedText.trim());
-  
-  // 当对话框打开时，检查API是否配置
+  const cloudConfigured = hasCloudConfig(aiApiConfig.provider, aiApiConfig.apiKey, aiApiConfig.customApiUrl);
+  const canUseApi = executionMode !== 'cloud' || cloudConfigured;
+
   React.useEffect(() => {
-    if (open) {
-      if (aiApiConfig.provider === 'none' || !aiApiConfig.apiKey) {
-        setMode('manual');
-      } else {
-        setMode('api');
-      }
+    if (!open) return;
+    setMode(canUseApi ? 'api' : 'manual');
+    setLastExecution(null);
+  }, [open, canUseApi]);
+
+  React.useEffect(() => {
+    if (executionMode === 'chrome-built-in' && !LOCAL_PROMPT_TASKS.has(taskMode)) {
+      setTaskMode('polish');
     }
-  }, [open, aiApiConfig]);
+  }, [executionMode, taskMode]);
 
-  const taskModeLabel = TASK_MODES.find(m => m.id === taskMode)?.label || '排版';
-  const prompt = `请对以下内容进行「${taskModeLabel}」处理。
+  React.useEffect(() => () => abortControllerRef.current?.abort(), []);
 
-【原文内容】：
-${effectiveContent}`;
+  const taskModeLabel = TASK_MODES.find((item) => item.id === taskMode)?.label || '排版';
+  const prompt = `请对以下内容进行「${taskModeLabel}」处理。\n\n【原文内容】：\n${effectiveContent}`;
 
   const handleCopyPrompt = async () => {
     try {
@@ -87,47 +108,70 @@ ${effectiveContent}`;
         document.execCommand('copy');
         document.body.removeChild(textarea);
         toast.success('Prompt 已复制到剪贴板');
-      } catch (e) {
-        console.error('Copy failed:', e);
+      } catch (error) {
+        console.error('Copy failed:', error);
         toast.error('复制失败，请手动复制');
       }
     }
   };
 
   const handleOpenAi = () => {
-    const provider = AI_PROVIDERS.find(p => p.id === aiProvider);
+    const provider = AI_PROVIDERS.find((item) => item.id === aiProvider);
     if (provider) {
       openExternalLink(provider.url);
       toast.info(`已打开 ${provider.name}，请粘贴 Prompt`);
     }
   };
 
-  // API模式调用AI
   const handleApiCall = async () => {
     if (!effectiveContent.trim()) {
       toast.error(isProcessingSelection ? '请先选中一些文字' : '请先输入一些内容');
       return;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setIsLoading(true);
     setResultText('');
+    setLastExecution(null);
 
     try {
-      const result = await callAiFormatting(aiApiConfig, effectiveContent, (chunk) => {
-        setResultText(chunk);
-      }, taskMode);
+      const result = await executeAiTask({
+        config: aiApiConfig,
+        executionMode,
+        content: effectiveContent,
+        taskMode,
+        signal: controller.signal,
+        onChunk: (chunk) => setResultText(chunk),
+      });
+
+      setLastExecution(result.execution);
 
       if (result.success && result.content) {
         setResultText(result.content);
-        toast.success(`AI ${taskModeLabel}完成！`);
+        if (result.execution.provider === 'chrome-built-in') {
+          toast.success(`Chrome 本地 AI ${taskModeLabel}完成`);
+        } else if (result.execution.fallback) {
+          toast.success(`已通过 ${result.execution.cloudProvider || '云端 AI'} fallback 完成${taskModeLabel}`);
+        } else {
+          toast.success(`AI ${taskModeLabel}完成！`);
+        }
+      } else if (result.execution.reason === 'local-aborted') {
+        toast.info('已停止本地 AI 生成');
       } else {
         toast.error(result.error || '调用失败');
       }
-    } catch {
-      toast.error('调用失败，请检查 API 配置');
+    } catch (error) {
+      console.error('[AI Assist] execution failed:', error);
+      toast.error('调用失败，请检查 AI 配置');
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
     }
+  };
+
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
   };
 
   const handleApply = () => {
@@ -137,13 +181,11 @@ ${effectiveContent}`;
     }
 
     if (isProcessingSelection && selectedText) {
-      // Replace only the selected portion in the full markdown
       const idx = markdown.indexOf(selectedText);
       if (idx !== -1) {
         const newMarkdown = markdown.substring(0, idx) + resultText + markdown.substring(idx + selectedText.length);
         setMarkdown(newMarkdown);
       } else {
-        // Fallback: if exact match not found, replace the whole document
         setMarkdown(resultText);
       }
     } else {
@@ -155,13 +197,6 @@ ${effectiveContent}`;
     setResultText('');
   };
 
-  const hasApiConfig = aiApiConfig.provider !== 'none' && (
-    aiApiConfig.provider === 'ollama' || aiApiConfig.apiKey.trim() !== ''
-  );
-  
-  // 检查是否可以进行API调用
-  const canUseApi = aiApiConfig.provider !== 'none' && (aiApiConfig.provider === 'ollama' || aiApiConfig.apiKey.trim() !== '');
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl w-[95vw] max-h-[80vh] sm:max-h-[85vh] overflow-hidden flex flex-col">
@@ -171,9 +206,9 @@ ${effectiveContent}`;
             AI 辅助
           </DialogTitle>
           <DialogDescription className="text-sm">
-            {hasApiConfig
-              ? '选择任务模式和操作方式，AI 将帮你处理内容。'
-              : '请在设置中配置 AI API 以使用一键处理功能，或使用手动模式。'}
+            {canUseApi
+              ? '选择任务模式和执行方式，Textura 会按本地优先策略处理内容。'
+              : '当前为仅云端模式，请先配置 AI API，或使用手动模式。'}
           </DialogDescription>
           {isProcessingSelection && (
             <div className="mt-1 inline-flex items-center gap-1.5 self-start rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
@@ -188,14 +223,13 @@ ${effectiveContent}`;
             </div>
           )}
         </DialogHeader>
-  
+
         <div className="flex-1 overflow-y-auto min-h-0">
-          {/* Mode Tabs */}
-          <Tabs value={mode} onValueChange={(v) => setMode(v as 'api' | 'manual')} className="w-full">
+          <Tabs value={mode} onValueChange={(value) => setMode(value as 'api' | 'manual')} className="w-full">
             <TabsList className="w-full grid grid-cols-2 mb-4">
               <TabsTrigger value="api" className="gap-2">
                 <Zap className="w-4 h-4" />
-                API 一键处理
+                一键处理
               </TabsTrigger>
               <TabsTrigger value="manual" className="gap-2">
                 <Bot className="w-4 h-4" />
@@ -203,41 +237,64 @@ ${effectiveContent}`;
               </TabsTrigger>
             </TabsList>
 
-            {/* API Mode */}
             <TabsContent value="api" className="space-y-4 m-0">
               {canUseApi ? (
                 <>
-                  {/* Task Mode Selector */}
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold text-primary">任务模式</Label>
                     <div className="flex flex-wrap gap-1.5">
-                      {TASK_MODES.map((tm) => (
-                        <Button
-                          key={tm.id}
-                          variant={taskMode === tm.id ? 'default' : 'outline'}
-                          size="sm"
-                          className="h-7 rounded-full px-3 text-xs"
-                          onClick={() => setTaskMode(tm.id)}
-                        >
-                          {tm.label}
-                        </Button>
-                      ))}
+                      {TASK_MODES.map((item) => {
+                        const disabled = executionMode === 'chrome-built-in' && !LOCAL_PROMPT_TASKS.has(item.id);
+                        return (
+                          <Button
+                            key={item.id}
+                            variant={taskMode === item.id ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-7 rounded-full px-3 text-xs"
+                            onClick={() => setTaskMode(item.id)}
+                            disabled={disabled}
+                            title={disabled ? '当前 Chrome 本地 AI 暂不支持该任务' : undefined}
+                          >
+                            {item.label}
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Current Config Info */}
-                  <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                  <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">当前配置:</span>
+                      <span className="text-muted-foreground">执行方式:</span>
+                      <span className="font-medium">{executionModeLabel(executionMode)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">云端 Provider:</span>
                       <span className="font-medium capitalize">{aiApiConfig.provider}</span>
                     </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-muted-foreground">模型:</span>
-                      <span className="font-mono text-xs">{aiApiConfig.model}</span>
-                    </div>
+                    {aiApiConfig.provider !== 'none' && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">云端模型:</span>
+                        <span className="font-mono text-xs">{aiApiConfig.model || '-'}</span>
+                      </div>
+                    )}
+                    {lastExecution && (
+                      <div className="flex items-center justify-between border-t pt-1 mt-1">
+                        <span className="text-muted-foreground">本次实际执行:</span>
+                        <span className="font-medium">
+                          {lastExecution.provider === 'chrome-built-in'
+                            ? 'Chrome 本地 AI'
+                            : `${lastExecution.cloudProvider || 'Cloud'}${lastExecution.fallback ? '（fallback）' : ''}`}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Preview of content */}
+                  {executionMode === 'smart' && (
+                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                      智能选择可能在本地任务不支持、模型未准备或运行失败时使用已配置的云端 Provider；实际执行方式会显示在上方。
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold text-primary">
                       待{taskModeLabel}内容预览
@@ -249,16 +306,15 @@ ${effectiveContent}`;
                     </div>
                   </div>
 
-                  {/* Result */}
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold flex items-center gap-2 text-primary">
                       {taskModeLabel}结果
                       {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                     </Label>
                     <Textarea
-                      placeholder={isLoading ? "AI 正在生成中..." : `点击「开始生成」获取${taskModeLabel}结果`}
+                      placeholder={isLoading ? 'AI 正在生成中...' : `点击「开始生成」获取${taskModeLabel}结果`}
                       value={resultText}
-                      onChange={(e) => setResultText(e.target.value)}
+                      onChange={(event) => setResultText(event.target.value)}
                       className="h-40 font-mono text-xs resize-none"
                       disabled={isLoading}
                     />
@@ -267,10 +323,10 @@ ${effectiveContent}`;
               ) : (
                 <div className="text-center py-8 space-y-4">
                   <Bot className="w-12 h-12 mx-auto opacity-50" />
-                  <p className="text-sm">请先配置 AI API</p>
-                  <p className="text-xs text-muted-foreground">支持 DeepSeek、豆包、通义千问、智谱等国产模型</p>
-                  <Button 
-                    variant="outline" 
+                  <p className="text-sm">请先配置云端 AI API</p>
+                  <p className="text-xs text-muted-foreground">或者在设置中切换为“智能选择 / Chrome 本地 AI”。</p>
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => {
                       onOpenChange(false);
@@ -285,7 +341,6 @@ ${effectiveContent}`;
               )}
             </TabsContent>
 
-            {/* Manual Mode */}
             <TabsContent value="manual" className="space-y-4 m-0">
               <div className="space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -294,28 +349,28 @@ ${effectiveContent}`;
                     复制专用提示词 (Prompt)
                   </Label>
                   <div className="flex flex-wrap gap-1.5">
-                    {AI_PROVIDERS.map((p) => (
+                    {AI_PROVIDERS.map((provider) => (
                       <Button
-                        key={p.id}
-                        variant={aiProvider === p.id ? 'default' : 'outline'}
+                        key={provider.id}
+                        variant={aiProvider === provider.id ? 'default' : 'outline'}
                         size="sm"
                         className="h-6 text-xs gap-1 rounded-full px-2 sm:px-2.5"
-                        onClick={() => setAiProvider(p.id)}
+                        onClick={() => setAiProvider(provider.id)}
                       >
-                        <span>{p.icon}</span>
-                        <span className="hidden sm:inline">{p.name}</span>
+                        <span>{provider.icon}</span>
+                        <span className="hidden sm:inline">{provider.name}</span>
                       </Button>
                     ))}
                   </div>
                 </div>
-                  
+
                 <div className="relative group">
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
                   <div className="relative bg-background rounded-lg border shadow-sm">
-                    <Textarea 
-                      value={prompt} 
-                      readOnly 
-                      className="h-20 sm:h-24 font-mono text-xs bg-transparent border-0 resize-none pr-14 sm:pr-20 focus-visible:ring-0 p-2" 
+                    <Textarea
+                      value={prompt}
+                      readOnly
+                      className="h-20 sm:h-24 font-mono text-xs bg-transparent border-0 resize-none pr-14 sm:pr-20 focus-visible:ring-0 p-2"
                     />
                     <div className="absolute top-1 right-1 flex gap-1">
                       <Button size="sm" onClick={handleCopyPrompt} className="h-6 sm:h-7 gap-1 shadow-sm text-xs px-1.5">
@@ -336,10 +391,10 @@ ${effectiveContent}`;
                 </Label>
                 <div className="relative group">
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg opacity-20 group-hover:opacity-40 transition duration-500 blur"></div>
-                  <Textarea 
+                  <Textarea
                     placeholder="在此处粘贴 AI 生成的 Markdown 内容..."
                     value={resultText}
-                    onChange={(e) => setResultText(e.target.value)}
+                    onChange={(event) => setResultText(event.target.value)}
                     className="relative h-28 sm:h-32 font-mono text-xs sm:text-sm resize-none border-0 bg-background rounded-lg shadow-sm p-2 focus-visible:ring-0"
                   />
                 </div>
@@ -347,29 +402,27 @@ ${effectiveContent}`;
             </TabsContent>
           </Tabs>
         </div>
-  
+
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           {mode === 'api' && canUseApi && (
-            <Button
-              onClick={handleApiCall}
-              disabled={isLoading || !effectiveContent.trim()}
-              className="gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4" />
-                  开始生成
-                </>
-              )}
-            </Button>
+            isLoading ? (
+              <Button onClick={handleStop} variant="destructive" className="gap-2">
+                <Square className="w-3.5 h-3.5" />
+                停止生成
+              </Button>
+            ) : (
+              <Button
+                onClick={handleApiCall}
+                disabled={!effectiveContent.trim()}
+                className="gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                开始生成
+              </Button>
+            )
           )}
-          <Button onClick={handleApply} disabled={!resultText.trim()} className="gap-2">
+          <Button onClick={handleApply} disabled={!resultText.trim() || isLoading} className="gap-2">
             <Bot className="w-4 h-4" />
             应用{taskModeLabel}
             <ArrowRight className="w-4 h-4" />

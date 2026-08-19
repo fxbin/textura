@@ -60,7 +60,9 @@ export interface AiRouteDecision {
     | 'explicit-local-unavailable'
     | 'local-supported'
     | 'local-language-unsupported'
-    | 'local-api-unavailable';
+    | 'local-api-unavailable'
+    | 'local-download-required'
+    | 'local-task-unsupported';
   cloudProvider?: string;
   localAvailability?: BuiltInAvailability;
   fallbackAllowed: boolean;
