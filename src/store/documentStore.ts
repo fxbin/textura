@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as mammoth from 'mammoth';
 import { isTauri } from '@tauri-apps/api/core';
+import { indexedDBStorage } from './indexedDBStorage';
 
 export type DocumentSource = 'untitled' | 'file' | 'example' | 'recovery';
 
@@ -203,6 +204,7 @@ export const useDocumentStore = create<DocumentState>()(
     }),
     {
       name: 'textura-documents',
+      storage: indexedDBStorage,
       skipHydration: true,
       partialize: (state) => ({
         recentDocuments: state.recentDocuments,
