@@ -42,7 +42,7 @@ const TASK_MODES: { id: AiTaskMode; label: string }[] = [
   { id: 'fix', label: '纠错' },
 ];
 
-const LOCAL_PROMPT_TASKS = new Set<AiTaskMode>(['polish', 'expand', 'fix']);
+const LOCAL_PROMPT_TASKS = new Set<AiTaskMode>(['polish', 'summarize', 'expand', 'fix']);
 
 function hasCloudConfig(provider: string, apiKey: string, customApiUrl?: string) {
   if (provider === 'none') return false;
@@ -253,7 +253,7 @@ export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDia
                             className="h-7 rounded-full px-3 text-xs"
                             onClick={() => setTaskMode(item.id)}
                             disabled={disabled}
-                            title={disabled ? '当前 Chrome 本地 AI 第一阶段暂不支持该任务' : undefined}
+                            title={disabled ? '当前 Chrome 本地 AI 暂不支持该任务' : undefined}
                           >
                             {item.label}
                           </Button>
