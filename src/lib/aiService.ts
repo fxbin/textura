@@ -67,7 +67,40 @@ function createTimeoutController(ms: number): { controller: AbortController; cle
   };
 }
 
-/** Read an SSE stream with inter-chunk timeout and parse-error tracking. */
+interface StreamReadState {
+  result: string;
+  consecutiveErrors: number;
+}
+
+function appendStreamJson<T>(
+  payload: string,
+  state: StreamReadState,
+  extractContent: (json: T) => string,
+  onChunk: (accumulated: string) => void,
+): AiResponse | null {
+  try {
+    const json = JSON.parse(payload) as T;
+    const content = extractContent(json);
+    if (content) {
+      state.result += content;
+      onChunk(state.result);
+    }
+    state.consecutiveErrors = 0;
+    return null;
+  } catch (error) {
+    state.consecutiveErrors += 1;
+    console.debug(
+      `[AI Stream] JSON parse error (${state.consecutiveErrors}/${MAX_CONSECUTIVE_PARSE_ERRORS}):`,
+      error,
+    );
+    if (state.consecutiveErrors >= MAX_CONSECUTIVE_PARSE_ERRORS) {
+      return { success: false, error: 'AI 响应格式异常，连续解析失败过多' };
+    }
+    return null;
+  }
+}
+
+/** Read an SSE stream with buffering, UTF-8 streaming decode and inter-chunk timeout. */
 async function readSseStream<T>(
   response: Response,
   extractContent: (json: T) => string,
@@ -77,15 +110,26 @@ async function readSseStream<T>(
   if (!reader) return { success: false, error: '无法读取响应流' };
 
   const decoder = new TextDecoder();
-  let result = '';
-  let consecutiveErrors = 0;
+  const state: StreamReadState = { result: '', consecutiveErrors: 0 };
+  let buffer = '';
   let chunkTimer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
 
   const resetChunkTimer = () => {
     if (chunkTimer) clearTimeout(chunkTimer);
     chunkTimer = setTimeout(() => {
+      timedOut = true;
       reader.cancel().catch(() => {});
     }, AI_CHUNK_TIMEOUT);
+  };
+
+  const processLine = (line: string): AiResponse | null => {
+    const normalized = line.trim();
+    if (!normalized || !normalized.startsWith('data:')) return null;
+
+    const data = normalized.slice(5).trimStart();
+    if (!data || data === '[DONE]') return null;
+    return appendStreamJson(data, state, extractContent, onChunk);
   };
 
   try {
@@ -95,35 +139,93 @@ async function readSseStream<T>(
       if (done) break;
       resetChunkTimer();
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim() !== '');
+      // stream:true preserves UTF-8 multi-byte characters split across Uint8Array chunks.
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const json = JSON.parse(data);
-          const content = extractContent(json);
-          if (content) {
-            result += content;
-            onChunk(result);
-          }
-          consecutiveErrors = 0;
-        } catch (e) {
-          consecutiveErrors++;
-          console.debug(`[AI Stream] JSON parse error (${consecutiveErrors}/${MAX_CONSECUTIVE_PARSE_ERRORS}):`, e);
-          if (consecutiveErrors >= MAX_CONSECUTIVE_PARSE_ERRORS) {
-            return { success: false, error: 'AI 响应格式异常，连续解析失败过多' };
-          }
-        }
+        const failure = processLine(line);
+        if (failure) return failure;
       }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      const failure = processLine(buffer);
+      if (failure) return failure;
+    }
+
+    if (timedOut) {
+      return { success: false, error: 'AI 流式响应超时，请重试' };
     }
   } finally {
     if (chunkTimer) clearTimeout(chunkTimer);
   }
 
-  return { success: true, content: result };
+  return { success: true, content: state.result };
+}
+
+/** Ollama uses newline-delimited JSON rather than SSE. */
+async function readJsonLineStream<T>(
+  response: Response,
+  extractContent: (json: T) => string,
+  onChunk: (accumulated: string) => void,
+): Promise<AiResponse> {
+  const reader = response.body?.getReader();
+  if (!reader) return { success: false, error: '无法读取响应流' };
+
+  const decoder = new TextDecoder();
+  const state: StreamReadState = { result: '', consecutiveErrors: 0 };
+  let buffer = '';
+  let chunkTimer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+
+  const resetChunkTimer = () => {
+    if (chunkTimer) clearTimeout(chunkTimer);
+    chunkTimer = setTimeout(() => {
+      timedOut = true;
+      reader.cancel().catch(() => {});
+    }, AI_CHUNK_TIMEOUT);
+  };
+
+  const processLine = (line: string): AiResponse | null => {
+    const data = line.trim();
+    if (!data) return null;
+    return appendStreamJson(data, state, extractContent, onChunk);
+  };
+
+  try {
+    resetChunkTimer();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetChunkTimer();
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const failure = processLine(line);
+        if (failure) return failure;
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      const failure = processLine(buffer);
+      if (failure) return failure;
+    }
+
+    if (timedOut) {
+      return { success: false, error: 'AI 流式响应超时，请重试' };
+    }
+  } finally {
+    if (chunkTimer) clearTimeout(chunkTimer);
+  }
+
+  return { success: true, content: state.result };
 }
 
 // 获取不同provider的模型列表
@@ -144,7 +246,7 @@ export const getProviderModels = (provider: AiApiProvider): string[] => {
     case 'ollama':
       return ['llama3.1', 'llama3', 'mistral', 'codellama', 'qwen2.5', 'phi3'];
     case 'custom':
-      return []; // 自定义模型由用户输入
+      return [];
     default:
       return [];
   }
@@ -174,8 +276,6 @@ export const getDefaultModel = (provider: AiApiProvider): string => {
   }
 };
 
-// 获取provider的API URL
-
 // 调用AI API进行排版
 export async function callAiFormatting(
   config: AiApiConfig,
@@ -196,10 +296,7 @@ export async function callAiFormatting(
   const prompt = TASK_PROMPTS[taskMode] || TASK_PROMPTS.format;
   const fullPrompt = prompt + content;
 
-  // 辅助函数：去除 Markdown 代码块包裹
   const stripMarkdownCodeBlock = (text: string) => {
-    // 匹配 ```markdown ... ``` 或 ``` ... ``` 或 ` ... `
-    // 优先匹配多行代码块
     const codeBlockRegex = /^```(?:markdown)?\s*([\s\S]*?)\s*```$/i;
     const match = text.trim().match(codeBlockRegex);
     if (match) {
@@ -239,7 +336,6 @@ export async function callAiFormatting(
         return { success: false, error: '未支持的 AI 提供商' };
     }
 
-    // 后处理：去除代码块
     if (response.success && response.content) {
       response.content = stripMarkdownCodeBlock(response.content);
     }
@@ -287,6 +383,7 @@ async function callOpenAI(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
@@ -336,6 +433,7 @@ async function callAnthropic(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: AnthropicStreamEvent) => json.delta?.text || '',
@@ -383,6 +481,7 @@ async function callDeepSeek(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
@@ -429,53 +528,12 @@ async function callOllama(
     }
 
     if (onChunk && response.body) {
-      // Ollama uses raw JSON lines (no "data: " SSE prefix)
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let result = '';
-      let consecutiveErrors = 0;
-      let chunkTimer: ReturnType<typeof setTimeout> | null = null;
-
-      const resetChunkTimer = () => {
-        if (chunkTimer) clearTimeout(chunkTimer);
-        chunkTimer = setTimeout(() => {
-          reader.cancel().catch(() => {});
-        }, AI_CHUNK_TIMEOUT);
-      };
-
-      try {
-        resetChunkTimer();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          resetChunkTimer();
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(line => line.trim() !== '');
-
-          for (const line of lines) {
-            try {
-              const json = JSON.parse(line);
-              const content = json.message?.content || '';
-              if (content) {
-                result += content;
-                onChunk(result);
-              }
-              consecutiveErrors = 0;
-            } catch (e) {
-              consecutiveErrors++;
-              console.debug(`[AI Stream] JSON parse error (${consecutiveErrors}/${MAX_CONSECUTIVE_PARSE_ERRORS}):`, e);
-              if (consecutiveErrors >= MAX_CONSECUTIVE_PARSE_ERRORS) {
-                return { success: false, error: 'AI 响应格式异常，连续解析失败过多' };
-              }
-            }
-          }
-        }
-      } finally {
-        if (chunkTimer) clearTimeout(chunkTimer);
-      }
-
-      return { success: true, content: result };
+      tc.clear();
+      return await readJsonLineStream<{ message?: { content?: string } }>(
+        response,
+        (json) => json.message?.content || '',
+        onChunk,
+      );
     }
 
     const data = await response.json();
@@ -518,6 +576,7 @@ async function callDoubao(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
@@ -565,6 +624,7 @@ async function callQwen(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
@@ -612,6 +672,7 @@ async function callZhipu(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
@@ -664,6 +725,7 @@ async function callCustomApi(
     }
 
     if (onChunk && response.body) {
+      tc.clear();
       return await readSseStream(
         response,
         (json: ChatCompletionChunk) => json.choices?.[0]?.delta?.content || '',
@@ -672,7 +734,6 @@ async function callCustomApi(
     }
 
     const data = await response.json();
-    // 尝试多种可能的返回格式
     return {
       success: true,
       content: data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.content || ''
