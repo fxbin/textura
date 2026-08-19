@@ -20,14 +20,8 @@ import { usePersistedStoresHydration } from '@/hooks/usePersistedStoresHydration
 import { useScrollSync } from '@/hooks/useScrollSync';
 
 export default function Home() {
-  usePersistedStoresHydration();
-  // Use a shorter interval (e.g., 3 minutes) or the default 5 minutes
-  useAutoSave(180000); // 3 minutes for peace of mind
-  useDocumentWorkflow();
-
-  // Enable scroll synchronization
-  useScrollSync();
-
+  // Register storage error reporting before hydration effects run, so IndexedDB
+  // read/migration failures during initial restore are visible to the user.
   React.useEffect(() => {
     const handleStorageError = () => {
       toast.error('本地数据持久化失败。请检查浏览器存储权限或可用空间，重要内容建议立即下载 Markdown 备份。', {
@@ -39,6 +33,14 @@ export default function Home() {
     window.addEventListener('textura-storage-error', handleStorageError);
     return () => window.removeEventListener('textura-storage-error', handleStorageError);
   }, []);
+
+  usePersistedStoresHydration();
+  // Use a shorter interval (e.g., 3 minutes) or the default 5 minutes
+  useAutoSave(180000); // 3 minutes for peace of mind
+  useDocumentWorkflow();
+
+  // Enable scroll synchronization
+  useScrollSync();
 
   // Detect mobile viewport (below 768px)
   const [isMobile, setIsMobile] = React.useState(false);
