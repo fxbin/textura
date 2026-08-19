@@ -104,26 +104,44 @@ function removeLegacyLocalStorage(name: string) {
   }
 }
 
+function parseStorageValue(serialized: string, name: string): StorageValue<unknown> | null {
+  try {
+    return JSON.parse(serialized) as StorageValue<unknown>;
+  } catch (error) {
+    console.error(`[indexedDBStorage] Invalid persisted JSON for ${name}:`, error);
+    return null;
+  }
+}
+
 export const indexedDBStorage: PersistStorage<unknown> = {
   getItem: async (name: string): Promise<StorageValue<unknown> | null> => {
     try {
       const serialized = await readSerializedItem(name);
       if (serialized) {
-        return JSON.parse(serialized) as StorageValue<unknown>;
+        return parseStorageValue(serialized, name);
       }
+    } catch (error) {
+      // IndexedDB may be blocked by browser privacy settings. Continue to the legacy
+      // fallback so an existing localStorage document/history is still recoverable.
+      console.error(`[indexedDBStorage] Failed to read ${name} from IndexedDB:`, error);
+    }
 
-      // One-time migration path for stores that previously used Zustand's default localStorage.
-      const legacy = readLegacyLocalStorage(name);
-      if (!legacy) return null;
+    const legacy = readLegacyLocalStorage(name);
+    if (!legacy) return null;
 
-      const parsed = JSON.parse(legacy) as StorageValue<unknown>;
+    const parsed = parseStorageValue(legacy, name);
+    if (!parsed) return null;
+
+    try {
       await writeSerializedItem(name, legacy);
       removeLegacyLocalStorage(name);
-      return parsed;
     } catch (error) {
-      console.error(`[indexedDBStorage] Failed to read ${name}:`, error);
-      return null;
+      // Migration failure must never hide otherwise valid legacy data. Keep the old
+      // localStorage entry and return it for this session.
+      console.error(`[indexedDBStorage] Failed to migrate ${name} to IndexedDB:`, error);
     }
+
+    return parsed;
   },
 
   setItem: async (name: string, value: StorageValue<unknown>): Promise<void> => {
