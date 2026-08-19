@@ -21,8 +21,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { getDefaultModel, getProviderModels } from '@/lib/aiService';
+import type { LocalAiExecutionMode } from '@/lib/ai/local';
 import { useEditorStore, AiApiProvider } from '@/store/useEditorStore';
 import { useHistoryStore } from '@/store/historyStore';
+import { useLocalAiStore } from '@/store/localAiStore';
+import { LocalAiSettingsCard } from '@/components/editor/LocalAiSettingsCard';
 
 function getDeviceLabel(deviceModel: string) {
   switch (deviceModel) {
@@ -57,6 +60,8 @@ export function SettingsDialog() {
   const setImageBasePath = useEditorStore((s) => s.setImageBasePath);
   const theme = useEditorStore((s) => s.theme);
   const savedThemes = useEditorStore((s) => s.savedThemes);
+  const executionMode = useLocalAiStore((s) => s.executionMode);
+  const setExecutionMode = useLocalAiStore((s) => s.setExecutionMode);
   const { snapshots } = useHistoryStore();
   const { theme: appTheme, setTheme } = useTheme();
   const [showApiKey, setShowApiKey] = useState(false);
@@ -69,8 +74,15 @@ export function SettingsDialog() {
   };
 
   const handleSaveApiKey = () => {
-    if (aiApiConfig.provider !== 'none' && aiApiConfig.provider !== 'ollama' && !aiApiConfig.apiKey.trim()) {
-      toast.error('请输入 API Key');
+    const needsApiKey = aiApiConfig.provider !== 'none' && aiApiConfig.provider !== 'ollama';
+
+    if (executionMode === 'cloud' && needsApiKey && !aiApiConfig.apiKey.trim()) {
+      toast.error('云端模式需要先配置 API Key');
+      return;
+    }
+
+    if (executionMode === 'smart' && needsApiKey && !aiApiConfig.apiKey.trim()) {
+      toast.warning('AI 执行方式已保存；云端 fallback 尚未配置 API Key');
       return;
     }
 
@@ -86,7 +98,7 @@ export function SettingsDialog() {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>偏好设置</DialogTitle>
           <DialogDescription>
@@ -199,13 +211,50 @@ export function SettingsDialog() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Bot className="h-4 w-4 text-primary" />
-                  AI 模型与凭证
+                  AI 执行方式
                 </CardTitle>
-                <CardDescription>AI 配置仅保存在当前设备本地。主题、历史快照和导出结果不依赖这里的配置。</CardDescription>
+                <CardDescription>
+                  “智能选择”优先使用已准备好的 Chrome 本地 AI；不满足任务或语言条件时使用下方云端 Provider。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">执行方式</Label>
+                  <Select value={executionMode} onValueChange={(value) => setExecutionMode(value as LocalAiExecutionMode)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="smart">智能选择（推荐）</SelectItem>
+                      <SelectItem value="chrome-built-in">Chrome 本地 AI</SelectItem>
+                      <SelectItem value="cloud">仅使用云端 AI</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+                  {executionMode === 'smart' && '本地模型已就绪且任务/语言支持时走本地；否则使用云端 fallback。'}
+                  {executionMode === 'chrome-built-in' && '只允许本地执行。若本地模型或当前语言不可用，不会静默上传正文到云端。'}
+                  {executionMode === 'cloud' && '保持现有行为，所有 AI 任务直接使用下方云端 Provider。'}
+                </div>
+              </CardContent>
+            </Card>
+
+            <LocalAiSettingsCard />
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Bot className="h-4 w-4 text-primary" />
+                  云端模型与凭证
+                </CardTitle>
+                <CardDescription>
+                  用于“仅云端”模式，或“智能选择”在本地不满足条件时的 fallback。凭证仅保存在当前设备本地。
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">提供方</Label>
+                  <Label className="text-xs text-muted-foreground">云端提供方</Label>
                   <Select value={aiApiConfig.provider} onValueChange={(value) => handleProviderChange(value as AiApiProvider)}>
                     <SelectTrigger className="h-9">
                       <SelectValue />
@@ -219,7 +268,7 @@ export function SettingsDialog() {
                       <SelectItem value="anthropic">Anthropic</SelectItem>
                       <SelectItem value="ollama">Ollama</SelectItem>
                       <SelectItem value="custom">自定义 API</SelectItem>
-                      <SelectItem value="none">不使用</SelectItem>
+                      <SelectItem value="none">不使用云端</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -289,7 +338,7 @@ export function SettingsDialog() {
                         {showApiKey ? '隐藏' : '显示'}
                       </Button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">仅用于当前浏览器 / 桌面端本地调用，不会自动上传到 Textura 云端。</p>
+                    <p className="text-[11px] text-muted-foreground">仅用于当前浏览器 / 桌面端直接调用，不会自动上传到 Textura 自有服务。</p>
                   </div>
                 )}
 
@@ -347,7 +396,7 @@ export function SettingsDialog() {
                 <CardContent className="space-y-2 text-sm text-muted-foreground">
                   <p>历史快照数：<span className="font-medium text-foreground">{snapshots.length}</span></p>
                   <p>自动快照每 3 分钟保存一次，入口在顶部“History”。</p>
-                  <p>异常恢复草稿单独保存在 localStorage，用于 IndexedDB 恢复失败或浏览器异常退出时兜底。</p>
+                  <p>异常恢复草稿用于 IndexedDB 恢复失败或浏览器异常退出时兜底。</p>
                 </CardContent>
               </Card>
 
