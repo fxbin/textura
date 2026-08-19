@@ -3,84 +3,139 @@
  * 用于将纯文本转换为结构化的 Markdown
  */
 
+function isFenceBoundary(line: string): boolean {
+  return /^\s*(?:```|~~~)/.test(line);
+}
+
 function isMarkdownListLine(line: string): boolean {
-  return /^(?:[-*+]\s+|\d+\.\s+)/.test(line);
+  return /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line);
+}
+
+function isIndentedCodeLine(line: string): boolean {
+  return /^(?: {4}|\t)/.test(line);
+}
+
+function collapseExcessBlankLines(lines: string[]): string {
+  const result: string[] = [];
+  let inFence = false;
+  let blankRun = 0;
+
+  for (const line of lines) {
+    if (isFenceBoundary(line)) {
+      result.push(line);
+      inFence = !inFence;
+      blankRun = 0;
+      continue;
+    }
+
+    if (inFence) {
+      result.push(line);
+      continue;
+    }
+
+    if (!line.trim()) {
+      blankRun += 1;
+      if (blankRun <= 2) {
+        result.push('');
+      }
+      continue;
+    }
+
+    blankRun = 0;
+    result.push(line);
+  }
+
+  return result.join('\n');
 }
 
 export function autoFormatMarkdown(text: string): string {
-  let lines = text.split('\n');
+  const lines = text.split('\n');
   const formattedLines: string[] = [];
-  
-  // 预处理：移除行首尾空格
-  lines = lines.map(line => line.trim());
+  let inFence = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    
-    // 跳过空行（稍后统一处理段落间距）
-    if (!line) {
+  for (const rawLine of lines) {
+    // fenced code block 内必须保持原始空格与缩进，避免排版破坏代码。
+    if (isFenceBoundary(rawLine)) {
+      formattedLines.push(rawLine.trimEnd());
+      inFence = !inFence;
+      continue;
+    }
+
+    if (inFence) {
+      formattedLines.push(rawLine);
+      continue;
+    }
+
+    if (!rawLine.trim()) {
       formattedLines.push('');
       continue;
     }
 
-    // 1. 识别一级标题/二级标题 (H2)
-    // 规则：以 "一、" "二、" "1、" 开头，且长度小于 40 字
-    if (/^([一二三四五六七八九十]+|[0-9]+)、/.test(line) && line.length < 40) {
-      // 避免重复加 #
-      if (!line.startsWith('#')) {
-        line = `## ${line}`;
+    const indent = rawLine.match(/^\s*/)?.[0] ?? '';
+    const content = rawLine.trim();
+    let line = rawLine.trimEnd();
+
+    // 有缩进的行通常属于嵌套列表/缩进代码，不做标题启发式转换。
+    if (!indent) {
+      // 1. 识别一级标题/二级标题 (H2)
+      // 规则：以 "一、" "二、" "1、" 开头，且长度小于 40 字
+      if (/^([一二三四五六七八九十]+|[0-9]+)、/.test(content) && content.length < 40) {
+        if (!content.startsWith('#')) {
+          line = `## ${content}`;
+        }
       }
-    }
-    // 规则：以 "第[一二...]章" 开头
-    else if (/^第[一二三四五六七八九十]+[章|节]/.test(line)) {
-       if (!line.startsWith('#')) {
-        line = `## ${line}`;
+      // 规则：以 "第[一二...]章/节" 开头
+      else if (/^第[一二三四五六七八九十]+[章节]/.test(content)) {
+        if (!content.startsWith('#')) {
+          line = `## ${content}`;
+        }
+      }
+      // 2. 识别三级标题 (H3)
+      // 仅处理 "（一）" / "(1)"，不再把标准 Markdown 的 "1. xxx" 误判成标题。
+      else if (/^(?:\（[一二三四五六七八九十]+\）|\([0-9]+\))/.test(content) && content.length < 40) {
+        if (!content.startsWith('#')) {
+          line = `### ${content}`;
+        }
       }
     }
 
-    // 2. 识别三级标题 (H3)
-    // 规则：以 "（一）" "(1)" "1." 开头，且长度小于 40 字
-    else if (/^(\（[一二三四五六七八九十]+\）|\([0-9]+\)|[0-9]+\.)/.test(line) && line.length < 40) {
-      if (!line.startsWith('#')) {
-        line = `### ${line}`;
-      }
-    }
-    
-    // 3. 识别列表
-    // 规则：以 "•" "-" 开头
-    else if (/^[•\-]\s/.test(line)) {
-      if (!line.startsWith('- ')) {
-        line = line.replace(/^[•\-]\s*/, '- ');
-      }
+    // 3. 规范无序列表，保留原有缩进层级。
+    if (/^\s*[•-]\s/.test(line)) {
+      line = line.replace(/^(\s*)[•-]\s*/, '$1- ');
     }
 
-    // 4. 中文段落标点优化 (可选，暂不强制替换英文标点，避免误伤代码)
-    
     formattedLines.push(line);
   }
 
-  // 5. 智能段落间距
-  // 确保非空行之间有空行，列表项之间保持紧凑，避免 Markdown loose list 额外生成 <p>
-  let result = '';
-  for (let i = 0; i < formattedLines.length; i++) {
+  // 4. 智能段落间距
+  // 普通段落之间增加一个空行；列表、标题、代码块保持原有紧凑结构。
+  const resultLines: string[] = [];
+  inFence = false;
+
+  for (let i = 0; i < formattedLines.length; i += 1) {
     const current = formattedLines[i];
     const next = formattedLines[i + 1];
+    resultLines.push(current);
 
-    result += current + '\n';
+    if (isFenceBoundary(current)) {
+      inFence = !inFence;
+      continue;
+    }
 
-    // 如果当前行不是空行，且下一行也不是空行，且不是标题或列表，则插入空行
-    // 普通段落之间增加一个空行；无序/有序列表项保持连续，避免列表段落化。
-    const isHeader = /^#/.test(current);
+    if (inFence || next === undefined || !current.trim() || !next.trim()) {
+      continue;
+    }
+
+    const isHeader = /^\s*#/.test(current);
     const isList = isMarkdownListLine(current);
-    const isEmpty = current.trim() === '';
+    const isCode = isIndentedCodeLine(current) || isIndentedCodeLine(next);
 
-    if (!isEmpty && !isHeader && !isList && next && next.trim() !== '') {
-       result += '\n';
+    if (!isHeader && !isList && !isCode) {
+      resultLines.push('');
     }
   }
 
-  // 清理多余的连续空行 (超过2个的变成2个)
-  return result.replace(/\n{3,}/g, '\n\n');
+  return collapseExcessBlankLines(resultLines);
 }
 
 /**
@@ -92,19 +147,15 @@ export function formatWeChatLinks(text: string): string {
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
   const links: string[] = [];
   let counter = 1;
-  
-  // 替换正文中的链接
+
   const newText = text.replace(linkRegex, (match, title, url) => {
-    // 忽略已经是引用格式的链接（如果有的话，虽然不太可能）
-    // 忽略图片
     if (match.startsWith('!')) return match;
-    
+
     links.push(`${counter}. ${title}: ${url}`);
     return `${title} <sup>[${counter++}]</sup>`;
   });
 
   if (links.length === 0) return text;
 
-  // 添加底部引用
   return `${newText}\n\n### 引用链接\n\n${links.join('\n')}`;
 }
