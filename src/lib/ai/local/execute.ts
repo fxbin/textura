@@ -27,6 +27,7 @@ interface ExecuteAiTaskOptions {
   content: string;
   taskMode: AiTaskMode;
   onChunk?: (accumulated: string) => void;
+  signal?: AbortSignal;
 }
 
 const LOCAL_TASK_PROMPTS: Partial<Record<AiTaskMode, { system: string; instruction: string }>> = {
@@ -91,6 +92,7 @@ export async function executeAiTask({
   content,
   taskMode,
   onChunk,
+  signal,
 }: ExecuteAiTaskOptions): Promise<RoutedAiResponse> {
   if (!content.trim()) {
     return {
@@ -166,6 +168,7 @@ export async function executeAiTask({
         systemPromptLanguage: 'en',
         systemPrompt: localPrompt.system,
         prompt: `${localPrompt.instruction}${content}`,
+        signal,
       },
       onChunk,
     );
@@ -180,6 +183,18 @@ export async function executeAiTask({
       },
     };
   } catch (error) {
+    if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+      return {
+        success: false,
+        error: '已停止本地 AI 生成',
+        execution: {
+          provider: 'chrome-built-in',
+          reason: 'local-aborted',
+          fallback: false,
+        },
+      };
+    }
+
     console.error('[Local AI] prompt failed:', error);
 
     if (executionMode === 'smart' && hasCloudConfig(config)) {
