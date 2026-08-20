@@ -11,6 +11,16 @@ export interface ChromeBuiltInCapabilityRequest {
   systemPromptLanguage?: string;
 }
 
+export interface ChromeBuiltInDiagnostics {
+  browser?: string;
+  origin?: string;
+  apiPresent: boolean;
+  availability?: BuiltInAvailability;
+  reason?: string;
+  language?: string;
+  rawError?: unknown;
+}
+
 export interface ChromeBuiltInCapability {
   provider: 'chrome-built-in';
   apiPresent: boolean;
@@ -21,6 +31,7 @@ export interface ChromeBuiltInCapability {
   supportedLanguages: readonly ChromeBuiltInTextLanguage[];
   requiresDownload: boolean;
   canCreateSession: boolean;
+  diagnostics?: ChromeBuiltInDiagnostics;
   reason?:
     | 'api-missing'
     | 'language-unsupported'
