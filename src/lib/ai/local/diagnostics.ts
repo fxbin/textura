@@ -1,3 +1,4 @@
+import { isTauriRuntime } from './chromeBuiltIn';
 import type { ChromeSummarizerCapability } from './chromeSummarizer';
 import type { ChromeBuiltInCapability } from './types';
 
@@ -81,6 +82,8 @@ function buildApiDiagnostic(
 
 function buildDeviceHint(
   isSecureContext: boolean,
+  runtime: LocalAiDiagnosticsReport['runtime'],
+  userAgent: string,
   prompt: ChromeBuiltInCapability | null,
   summarizer: ChromeSummarizerCapability | null,
 ): string {
@@ -89,7 +92,13 @@ function buildDeviceHint(
   }
 
   if (!prompt?.apiPresent && !summarizer?.apiPresent) {
-    return '当前浏览器未暴露 LanguageModel / Summarizer 接口；如需本地推理，请使用满足条件的桌面版 Chrome 138+，或继续使用云端 Provider。';
+    if (runtime === 'tauri') {
+      return '当前运行于 Tauri 桌面端内置 WebView，不包含 Chrome 内置 Gemini Nano 模型，建议使用「智能选择」或配置云端 Provider。';
+    }
+    if (/Firefox\//i.test(userAgent) || (/Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent))) {
+      return '当前浏览器内核不支持 Chrome Built-in AI，建议使用「智能选择」或配置云端 Provider。';
+    }
+    return '当前浏览器未暴露 LanguageModel / Summarizer 接口；若使用桌面版 Chrome，请在 chrome://flags 开启 #optimization-guide-on-device-model、#prompt-api-for-gemini-nano 与 #summarization-api-for-gemini-nano 后重启，或直接使用云端 Provider。';
   }
 
   if (
@@ -128,7 +137,7 @@ export function collectLocalAiDiagnostics(input: {
     : undefined;
   const runtime: LocalAiDiagnosticsReport['runtime'] = !hasWindow
     ? 'server'
-    : '__TAURI__' in window
+    : isTauriRuntime()
       ? 'tauri'
       : 'browser';
   const origin = hasWindow && window.location ? window.location.origin : 'unknown';
@@ -144,6 +153,8 @@ export function collectLocalAiDiagnostics(input: {
     summarizer: buildApiDiagnostic(input.summarizerCapability),
     deviceHint: buildDeviceHint(
       isSecureContext,
+      runtime,
+      userAgent,
       input.promptCapability,
       input.summarizerCapability,
     ),

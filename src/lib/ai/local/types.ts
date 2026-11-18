@@ -69,6 +69,8 @@ export interface AiRouteDecision {
   reason:
     | 'explicit-cloud'
     | 'explicit-local'
+    | 'explicit-local-language-unsupported'
+    | 'explicit-local-api-unavailable'
     | 'explicit-local-unavailable'
     | 'local-supported'
     | 'local-language-unsupported'

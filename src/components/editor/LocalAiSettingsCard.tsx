@@ -205,6 +205,38 @@ export function LocalAiSettingsCard() {
               {promptCapability.reasonMessage}
             </p>
           )}
+          {!checking && promptCapability?.reason === 'api-missing' && diagnostics.runtime !== 'tauri' && (
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  void handleCopyText(
+                    'chrome://flags/#prompt-api-for-gemini-nano',
+                    '已复制 Prompt API Flag 地址'
+                  )
+                }
+              >
+                <Copy className="h-3 w-3" />
+                复制 #prompt-api-for-gemini-nano
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  void handleCopyText(
+                    'chrome://flags/#optimization-guide-on-device-model',
+                    '已复制端侧模型开关地址'
+                  )
+                }
+              >
+                <Copy className="h-3 w-3" />
+                复制 #optimization-guide-on-device-model
+              </Button>
+            </div>
+          )}
           <ProgressBar progress={promptProgress} />
         </div>
 
@@ -231,6 +263,38 @@ export function LocalAiSettingsCard() {
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               {summarizerCapability.reasonMessage}
             </p>
+          )}
+          {!checking && summarizerCapability?.reason === 'api-missing' && diagnostics.runtime !== 'tauri' && (
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  void handleCopyText(
+                    'chrome://flags/#summarization-api-for-gemini-nano',
+                    '已复制 Summarizer API Flag 地址'
+                  )
+                }
+              >
+                <Copy className="h-3 w-3" />
+                复制 #summarization-api-for-gemini-nano
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  void handleCopyText(
+                    'chrome://flags/#optimization-guide-on-device-model',
+                    '已复制端侧模型开关地址'
+                  )
+                }
+              >
+                <Copy className="h-3 w-3" />
+                复制 #optimization-guide-on-device-model
+              </Button>
+            </div>
           )}
           <ProgressBar progress={summarizerProgress} />
         </div>

@@ -24,7 +24,7 @@ import { getDefaultModel, getProviderModels } from '@/lib/aiService';
 import type { LocalAiExecutionMode } from '@/lib/ai/local';
 import { useEditorStore, AiApiProvider } from '@/store/useEditorStore';
 import { useHistoryStore } from '@/store/historyStore';
-import { useLocalAiStore } from '@/store/localAiStore';
+import { useLocalAiStore, type SettingsTab } from '@/store/localAiStore';
 import { LocalAiSettingsCard } from '@/components/editor/LocalAiSettingsCard';
 
 function getDeviceLabel(deviceModel: string) {
@@ -62,6 +62,8 @@ export function SettingsDialog() {
   const savedThemes = useEditorStore((s) => s.savedThemes);
   const executionMode = useLocalAiStore((s) => s.executionMode);
   const setExecutionMode = useLocalAiStore((s) => s.setExecutionMode);
+  const settingsTab = useLocalAiStore((s) => s.settingsTab);
+  const setSettingsTab = useLocalAiStore((s) => s.setSettingsTab);
   const { snapshots } = useHistoryStore();
   const { theme: appTheme, setTheme } = useTheme();
   const [showApiKey, setShowApiKey] = useState(false);
@@ -90,7 +92,15 @@ export function SettingsDialog() {
   };
 
   return (
-    <Dialog open={isSettingsOpen} onOpenChange={setSettingsOpen}>
+    <Dialog
+      open={isSettingsOpen}
+      onOpenChange={(open) => {
+        setSettingsOpen(open);
+        if (!open) {
+          setSettingsTab('general');
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           variant="ghost"
@@ -111,7 +121,11 @@ export function SettingsDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="general" className="gap-4">
+        <Tabs
+          value={settingsTab}
+          onValueChange={(value) => setSettingsTab(value as SettingsTab)}
+          className="gap-4"
+        >
           <TabsList variant="line" className="w-full justify-start">
             <TabsTrigger value="general">通用</TabsTrigger>
             <TabsTrigger value="ai">AI 配置</TabsTrigger>

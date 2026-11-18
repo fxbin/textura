@@ -8,6 +8,7 @@ import {
   executeAiTask,
   getChromeBuiltInCapability,
   getChromeSummarizerCapability,
+  inferPrimaryTextLanguage,
   prepareChromeSummarizer,
   routeAiExecution,
 } from '../index.ts';
@@ -634,4 +635,160 @@ test('Router enforces explicit local unsupported task & diagnostics extracts run
       assert.equal(report.summarizer.reason, 'browser-unavailable');
     },
   );
+});
+
+test('inferPrimaryTextLanguage handles mixed technical terms, minor Han annotations, and code blocks', () => {
+  assert.equal(
+    inferPrimaryTextLanguage('使用 Next.js、TailwindCSS 和 Markdown 撰写微信公众号排版指南。'),
+    'zh',
+  );
+  assert.equal(
+    inferPrimaryTextLanguage(
+      '## 快速上手\n\n```ts\nconst mode = "smart";\nexport function runLocalAi() { return true; }\n```\n\n在编辑器中输入正文即可预览。',
+    ),
+    'zh',
+  );
+  assert.equal(
+    inferPrimaryTextLanguage(
+      'Chrome Built-in AI allows web applications to run Gemini Nano directly inside the desktop browser without uploading private drafts to remote cloud servers. This helps preserve user privacy across offline workflows（注：草稿）. ',
+    ),
+    'en',
+  );
+  assert.equal(inferPrimaryTextLanguage('これは日本語の文章です。Chrome で確認します。'), 'ja');
+  assert.equal(inferPrimaryTextLanguage('   \n\t  '), 'und');
+});
+
+test('Explicit local mode surfaces distinct actionable errors for language, missing flags, Tauri WebView, and unavailable hardware', async () => {
+  let localCreated = false;
+  let fetchCalled = 0;
+  const mockFetch = createMockCloudFetch('unused', () => {
+    fetchCalled += 1;
+  });
+
+  // 1. API available, Chinese text -> explicit-local-language-unsupported
+  await withMockEnv(
+    {
+      window: { isSecureContext: true, location: { origin: 'https://textura.top' } },
+      LanguageModel: {
+        availability: async () => 'available',
+        create: async () => {
+          localCreated = true;
+          throw new Error('Must not create session for Chinese');
+        },
+      },
+      Summarizer: {
+        availability: async () => 'available',
+        create: async () => {
+          localCreated = true;
+          throw new Error('Must not create summarizer for Chinese');
+        },
+      },
+      fetch: mockFetch,
+    },
+    async () => {
+      const polishZh = await executeAiTask({
+        config: CLOUD_CONFIG,
+        executionMode: 'chrome-built-in',
+        content: '这是一段需要本地润色的中文正文内容。',
+        taskMode: 'polish',
+      });
+      assert.equal(polishZh.success, false);
+      assert.equal(polishZh.execution.reason, 'explicit-local-language-unsupported');
+      assert.match(polishZh.error || '', /中文/);
+      assert.match(polishZh.error || '', /仅支持英文内容/);
+
+      const sumZh = await executeAiTask({
+        config: CLOUD_CONFIG,
+        executionMode: 'chrome-built-in',
+        content: '这是一段需要本地摘要的中文正文内容。',
+        taskMode: 'summarize',
+      });
+      assert.equal(sumZh.success, false);
+      assert.equal(sumZh.execution.reason, 'summarizer-language-unsupported');
+      assert.match(sumZh.error || '', /中文/);
+    },
+  );
+
+  // 2. API missing on browser -> Chrome flags guidance (+ Chinese side note if text is Chinese)
+  await withMockEnv(
+    {
+      window: { isSecureContext: true, location: { origin: 'https://textura.top' } },
+      LanguageModel: undefined,
+      Summarizer: undefined,
+      fetch: mockFetch,
+    },
+    async () => {
+      const missingEn = await executeAiTask({
+        config: CLOUD_CONFIG,
+        executionMode: 'chrome-built-in',
+        content: 'Please polish this English paragraph for publication.',
+        taskMode: 'polish',
+      });
+      assert.equal(missingEn.success, false);
+      assert.equal(missingEn.execution.reason, 'explicit-local-api-unavailable');
+      assert.match(missingEn.error || '', /LanguageModel/);
+      assert.match(missingEn.error || '', /chrome:\/\/flags/);
+
+      const missingZh = await executeAiTask({
+        config: CLOUD_CONFIG,
+        executionMode: 'chrome-built-in',
+        content: '中文正文在未开启接口时也应先指出接口缺失并附带语言说明。',
+        taskMode: 'polish',
+      });
+      assert.equal(missingZh.success, false);
+      assert.equal(missingZh.execution.reason, 'explicit-local-api-unavailable');
+      assert.match(missingZh.error || '', /chrome:\/\/flags/);
+      assert.match(missingZh.error || '', /仅支持英文内容/);
+
+      const missingSum = await executeAiTask({
+        config: CLOUD_CONFIG,
+        executionMode: 'chrome-built-in',
+        content: 'Summarize this English paragraph.',
+        taskMode: 'summarize',
+      });
+      assert.equal(missingSum.success, false);
+      assert.equal(missingSum.execution.reason, 'explicit-local-api-unavailable');
+      assert.match(missingSum.error || '', /Summarizer/);
+      assert.match(missingSum.error || '', /chrome:\/\/flags/);
+    },
+  );
+
+  // 3. API present but unavailable -> points to chrome://on-device-internals
+  await withMockEnv(
+    {
+      window: { isSecureContext: true, location: { origin: 'https://textura.top' } },
+      LanguageModel: { availability: async () => 'unavailable' },
+      Summarizer: { availability: async () => 'unavailable' },
+      fetch: mockFetch,
+    },
+    async () => {
+      const hardwareUnavailable = await executeAiTask({
+        config: CLOUD_CONFIG,
+        executionMode: 'chrome-built-in',
+        content: 'English draft tested on unsupported hardware.',
+        taskMode: 'polish',
+      });
+      assert.equal(hardwareUnavailable.success, false);
+      assert.equal(hardwareUnavailable.execution.reason, 'explicit-local-api-unavailable');
+      assert.match(hardwareUnavailable.error || '', /chrome:\/\/on-device-internals/);
+    },
+  );
+
+  // 4. Tauri WebView runtime -> clear Tauri guidance
+  await withMockEnv(
+    {
+      window: { isSecureContext: true, location: { origin: 'tauri://localhost' }, __TAURI__: {} },
+      LanguageModel: undefined,
+      Summarizer: undefined,
+    },
+    async () => {
+      const tauriCap = await getChromeBuiltInCapability({ inputLanguage: 'en' });
+      assert.equal(tauriCap.reason, 'api-missing');
+      assert.match(tauriCap.reasonMessage || '', /Tauri/);
+      assert.match(tauriCap.reasonMessage || '', /WebView/);
+    },
+  );
+
+  assert.equal(localCreated, false);
+  assert.equal(fetchCalled, 0);
 });

@@ -2,10 +2,12 @@
 
 import * as React from 'react';
 import {
+  AlertTriangle,
   ArrowRight,
   Bot,
   Check,
   Copy,
+  Download,
   ExternalLink,
   Loader2,
   Settings,
@@ -26,7 +28,19 @@ import {
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { executeAiTask, type AiExecutionMeta } from '@/lib/ai/local';
+import {
+  createChromeBuiltInPromptSession,
+  executeAiTask,
+  getChromeBuiltInCapability,
+  getChromeSummarizerCapability,
+  inferPrimaryTextLanguage,
+  isTauriRuntime,
+  prepareChromeSummarizer,
+  type AiExecutionMeta,
+  type ChromeBuiltInCapability,
+  type ChromeSummarizerCapability,
+  type LocalAiExecutionMode,
+} from '@/lib/ai/local';
 import type { AiTaskMode } from '@/lib/aiService';
 import { openExternalLink } from '@/lib/link';
 import { cn } from '@/lib/utils';
@@ -56,6 +70,18 @@ const TASK_MODES: { id: AiTaskMode; label: string; hint: string }[] = [
 
 const LOCAL_PROMPT_TASKS = new Set<AiTaskMode>(['polish', 'summarize', 'expand', 'fix']);
 
+const LOCAL_CAPABILITY_REQUEST = {
+  inputLanguage: 'en',
+  outputLanguage: 'en',
+  systemPromptLanguage: 'en',
+} as const;
+
+const EXECUTION_MODE_OPTIONS: { id: LocalAiExecutionMode; label: string }[] = [
+  { id: 'smart', label: '智能选择' },
+  { id: 'chrome-built-in', label: 'Chrome 本地 AI' },
+  { id: 'cloud', label: '仅云端' },
+];
+
 function hasCloudConfig(provider: string, apiKey: string, customApiUrl?: string) {
   if (provider === 'none') return false;
   if (provider === 'ollama') return true;
@@ -63,10 +89,20 @@ function hasCloudConfig(provider: string, apiKey: string, customApiUrl?: string)
   return Boolean(apiKey.trim());
 }
 
-function executionModeLabel(mode: 'smart' | 'chrome-built-in' | 'cloud') {
-  if (mode === 'smart') return '智能选择';
-  if (mode === 'chrome-built-in') return 'Chrome 本地 AI';
-  return '仅云端';
+async function writeClipboardText(text: string): Promise<boolean> {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  return ok;
 }
 
 export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDialogProps) {
@@ -77,6 +113,8 @@ export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDia
   const aiApiConfig = useEditorStore((s) => s.aiApiConfig);
   const setSettingsOpen = useEditorStore((s) => s.setSettingsOpen);
   const executionMode = useLocalAiStore((s) => s.executionMode);
+  const setExecutionMode = useLocalAiStore((s) => s.setExecutionMode);
+  const setSettingsTab = useLocalAiStore((s) => s.setSettingsTab);
 
   const cloudConfigured = hasCloudConfig(
     aiApiConfig.provider,
@@ -91,7 +129,34 @@ export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDia
   const [taskMode, setTaskMode] = React.useState<AiTaskMode>('format');
   const [lastExecution, setLastExecution] = React.useState<AiExecutionMeta | null>(null);
   const [copiedPrompt, setCopiedPrompt] = React.useState(false);
+  const [localCapabilities, setLocalCapabilities] = React.useState<{
+    prompt: ChromeBuiltInCapability;
+    summarizer: ChromeSummarizerCapability;
+  } | null>(null);
+  const [preparingLocal, setPreparingLocal] = React.useState(false);
+  const [localPrepProgress, setLocalPrepProgress] = React.useState<number | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  const fetchLocalCapabilities = React.useCallback(async () => {
+    const [prompt, summarizer] = await Promise.all([
+      getChromeBuiltInCapability(LOCAL_CAPABILITY_REQUEST),
+      getChromeSummarizerCapability('en'),
+    ]);
+    return { prompt, summarizer };
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void fetchLocalCapabilities().then((caps) => {
+      if (!cancelled) {
+        setLocalCapabilities(caps);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, fetchLocalCapabilities]);
 
   React.useEffect(() => () => abortControllerRef.current?.abort(), []);
 
@@ -105,23 +170,86 @@ export function AiAssistDialog({ open, onOpenChange, selectedText }: AiAssistDia
   const isProcessingSelection = Boolean(selectedText && selectedText.trim());
   const currentTask = TASK_MODES.find((m) => m.id === effectiveTaskMode) ?? TASK_MODES[0];
 
+  const detectedLanguage = inferPrimaryTextLanguage(effectiveContent);
+  const activeLocalCap =
+    effectiveTaskMode === 'summarize'
+      ? localCapabilities?.summarizer
+      : localCapabilities?.prompt;
+  const activeTaskFlag =
+    effectiveTaskMode === 'summarize'
+      ? 'chrome://flags/#summarization-api-for-gemini-nano'
+      : 'chrome://flags/#prompt-api-for-gemini-nano';
+  const showDesktopChromeFlags =
+    activeLocalCap?.reason === 'api-missing' && !isTauriRuntime();
+
+  const localBlocker = React.useMemo(() => {
+    if (executionMode !== 'chrome-built-in') return null;
+    if (activeLocalCap && (activeLocalCap.reason === 'api-missing' || activeLocalCap.reason === 'insecure-context')) {
+      const langNote =
+        effectiveContent.trim() && detectedLanguage !== 'en'
+          ? '（另注：Chrome 本地 AI 目前也仅支持英文内容）'
+          : '';
+      return {
+        kind: 'api' as const,
+        title:
+          activeLocalCap.reason === 'insecure-context'
+            ? '当前页面处于非安全上下文'
+            : '当前环境未开启 Chrome 本地 AI 接口',
+        description: `${activeLocalCap.reasonMessage ?? ''}${langNote}`,
+      };
+    }
+
+    if (effectiveContent.trim() && detectedLanguage !== 'en') {
+      return {
+        kind: 'language' as const,
+        title:
+          detectedLanguage === 'zh'
+            ? '当前文稿为中文，Chrome 本地 AI 暂不支持中文'
+            : '当前文稿非英文，Chrome 本地 AI 暂不支持',
+        description:
+          'Chrome 内置 Gemini Nano 目前仅开放英文内容的润色、纠错、扩写与摘要；纯本地模式不会静默上传您的文稿。',
+      };
+    }
+
+    if (
+      activeLocalCap &&
+      (activeLocalCap.availability === 'downloadable' ||
+        activeLocalCap.availability === 'downloading')
+    ) {
+      return {
+        kind: 'download' as const,
+        title:
+          activeLocalCap.availability === 'downloading'
+            ? 'Chrome 本地模型正在下载'
+            : 'Chrome 本地模型尚未准备完成',
+        description:
+          '英文文稿支持纯本地执行；首次使用需要先下载浏览器端模型，可直接在下方点击准备。',
+      };
+    }
+
+    if (activeLocalCap && activeLocalCap.availability === 'unavailable') {
+      return {
+        kind: 'unavailable' as const,
+        title: '当前浏览器或设备暂不可用 Chrome 本地 AI',
+        description:
+          activeLocalCap.reasonMessage ||
+          '浏览器返回 unavailable，请对照 chrome://on-device-internals 检查本地模型与硬件状态。',
+      };
+    }
+
+    return null;
+  }, [executionMode, activeLocalCap, effectiveContent, detectedLanguage]);
+
   const prompt = `请对以下 Markdown 内容进行「${currentTask.label}」处理（${currentTask.hint}），并直接返回处理后的 Markdown 文本，无需额外解释：
 
 ${effectiveContent}`;
 
   const copyPromptToClipboard = async () => {
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(prompt);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = prompt;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
+      const copied = await writeClipboardText(prompt);
+      if (!copied) {
+        toast.error('复制失败，请手动全选复制');
+        return false;
       }
       setCopiedPrompt(true);
       setTimeout(() => setCopiedPrompt(false), 1800);
@@ -131,6 +259,51 @@ ${effectiveContent}`;
       toast.error('复制失败，请手动全选复制');
       return false;
     }
+  };
+
+  const handleCopyHelperText = async (text: string, successMsg: string) => {
+    try {
+      const copied = await writeClipboardText(text);
+      if (copied) {
+        toast.success(successMsg);
+      } else {
+        toast.error('复制失败，请检查剪贴板权限');
+      }
+    } catch {
+      toast.error('复制失败，请检查剪贴板权限');
+    }
+  };
+
+  const handlePrepareLocalModel = async () => {
+    setPreparingLocal(true);
+    setLocalPrepProgress(0);
+    try {
+      if (effectiveTaskMode === 'summarize') {
+        await prepareChromeSummarizer('en', (p) => setLocalPrepProgress(p));
+        toast.success('Chrome 摘要模型已准备完成');
+      } else {
+        const session = await createChromeBuiltInPromptSession({
+          ...LOCAL_CAPABILITY_REQUEST,
+          onDownloadProgress: (p) => setLocalPrepProgress(p),
+        });
+        session.destroy?.();
+        toast.success('Chrome Prompt 本地模型已准备完成');
+      }
+      const nextCaps = await fetchLocalCapabilities();
+      setLocalCapabilities(nextCaps);
+    } catch (error) {
+      console.error('[AI Assist] local prepare failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Chrome 本地模型准备失败');
+    } finally {
+      setPreparingLocal(false);
+      setLocalPrepProgress(null);
+    }
+  };
+
+  const openAiSettings = () => {
+    setSettingsTab('ai');
+    handleDialogOpenChange(false);
+    setSettingsOpen(true);
   };
 
   const handleCopyPrompt = async () => {
@@ -231,6 +404,7 @@ ${effectiveContent}`;
       setModeOverride(null);
       setLastExecution(null);
       setCopiedPrompt(false);
+      setLocalPrepProgress(null);
     }
     onOpenChange(nextOpen);
   };
@@ -323,80 +497,224 @@ ${effectiveContent}`;
 
             {/* API / Local-first Mode */}
             <TabsContent value="api" className="m-0 space-y-3.5">
+              <div className="space-y-2 rounded-xl border border-border/75 bg-card px-3.5 py-2.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-muted-foreground">执行方式</span>
+                    {EXECUTION_MODE_OPTIONS.map((option) => {
+                      const active = executionMode === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          disabled={isLoading || preparingLocal}
+                          onClick={() => {
+                            setExecutionMode(option.id);
+                            setLastExecution(null);
+                          }}
+                          className={cn(
+                            'rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-50',
+                            active
+                              ? 'bg-primary text-primary-foreground shadow-2xs'
+                              : 'border border-border/70 bg-background text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={openAiSettings}
+                  >
+                    <Settings className="h-3 w-3" />
+                    配置
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-1.5">
+                  <span
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-[10.5px] font-medium',
+                      executionMode === 'chrome-built-in'
+                        ? !localCapabilities
+                          ? 'bg-muted text-muted-foreground'
+                          : localBlocker
+                            ? 'bg-amber-500/12 text-amber-800 dark:text-amber-300'
+                            : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                        : executionMode === 'smart'
+                          ? 'bg-amber-500/12 text-amber-700 dark:text-amber-300'
+                          : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {executionMode === 'chrome-built-in'
+                      ? !localCapabilities
+                        ? '正在检测本地支持 · 正文不上传云端'
+                        : localBlocker
+                          ? '纯本地受限 · 正文不上传云端'
+                          : '本地就绪 · 正文不上传云端'
+                      : executionMode === 'smart'
+                        ? '本地优先 · 回退云端时显式标注'
+                        : '云端执行 · 发送至所选服务商'}
+                  </span>
+                  {executionMode !== 'chrome-built-in' && aiApiConfig.provider !== 'none' && (
+                    <>
+                      <span className="text-muted-foreground">· 云端</span>
+                      <span className="rounded bg-muted px-1.5 py-0.5 font-medium capitalize text-foreground">
+                        {aiApiConfig.provider}
+                      </span>
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {aiApiConfig.model || aiApiConfig.customModelName || '-'}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {lastExecution && (
+                  <div className="flex items-center justify-between border-t border-border/60 pt-1.5">
+                    <span className="text-muted-foreground">本次实际执行</span>
+                    <span
+                      className={cn(
+                        'font-medium',
+                        lastExecution.provider === 'chrome-built-in'
+                          ? 'text-emerald-700 dark:text-emerald-300'
+                          : 'text-foreground'
+                      )}
+                    >
+                      {lastExecution.provider === 'chrome-built-in'
+                        ? '本地设备已执行（正文未离开本机）'
+                        : `云端已执行：${lastExecution.cloudProvider || 'Cloud'}${lastExecution.fallback ? '（fallback 回退）' : ''}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {canUseApi ? (
                 <>
-                  <div className="space-y-1.5 rounded-xl border border-border/75 bg-card px-3.5 py-2.5 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-muted-foreground">执行方式</span>
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
-                          {executionModeLabel(executionMode)}
-                        </span>
-                        <span
-                          className={cn(
-                            'rounded-full px-2 py-0.5 text-[10.5px] font-medium',
-                            executionMode === 'chrome-built-in'
-                              ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
-                              : executionMode === 'smart'
-                                ? 'bg-amber-500/12 text-amber-700 dark:text-amber-300'
-                                : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {executionMode === 'chrome-built-in'
-                            ? '本地执行 · 正文不上传云端'
-                            : executionMode === 'smart'
-                              ? '本地优先 · 回退云端时显式标注'
-                              : '云端执行 · 发送至所选服务商'}
-                        </span>
-                        {executionMode !== 'chrome-built-in' && aiApiConfig.provider !== 'none' && (
+                  {executionMode === 'chrome-built-in' && localBlocker && (
+                    <div className="space-y-2.5 rounded-xl border border-amber-500/35 bg-amber-50/80 p-3 text-xs text-amber-950 dark:bg-amber-500/10 dark:text-amber-100">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <div className="min-w-0 space-y-1">
+                          <p className="font-semibold">{localBlocker.title}</p>
+                          <p className="text-[11.5px] leading-relaxed opacity-90">
+                            {localBlocker.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {localPrepProgress !== null && (
+                        <div className="space-y-1">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-amber-950/15 dark:bg-amber-200/15">
+                            <div
+                              className="h-full bg-primary transition-all"
+                              style={{ width: `${Math.round(localPrepProgress * 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-right font-mono text-[10.5px] opacity-80">
+                            {Math.round(localPrepProgress * 100)}%
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-1.5 pl-6">
+                        {localBlocker.kind === 'download' && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            disabled={preparingLocal}
+                            onClick={() => void handlePrepareLocalModel()}
+                          >
+                            <Download className="h-3 w-3" />
+                            {preparingLocal ? '模型准备中…' : '立即准备本地模型'}
+                          </Button>
+                        )}
+                        {showDesktopChromeFlags && (
                           <>
-                            <span className="text-muted-foreground">· 云端</span>
-                            <span className="rounded bg-muted px-1.5 py-0.5 font-medium capitalize text-foreground">
-                              {aiApiConfig.provider}
-                            </span>
-                            <span className="font-mono text-[11px] text-muted-foreground">
-                              {aiApiConfig.model || aiApiConfig.customModelName || '-'}
-                            </span>
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="outline"
+                              onClick={() =>
+                                void handleCopyHelperText(
+                                  activeTaskFlag,
+                                  `已复制 ${activeTaskFlag}`
+                                )
+                              }
+                            >
+                              <Copy className="h-3 w-3" />
+                              复制任务 Flag
+                            </Button>
+                            <Button
+                              type="button"
+                              size="xs"
+                              variant="outline"
+                              onClick={() =>
+                                void handleCopyHelperText(
+                                  'chrome://flags/#optimization-guide-on-device-model',
+                                  '已复制端侧模型 Flag 地址'
+                                )
+                              }
+                            >
+                              <Copy className="h-3 w-3" />
+                              复制端侧模型 Flag
+                            </Button>
                           </>
                         )}
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        className="shrink-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          handleDialogOpenChange(false);
-                          setSettingsOpen(true);
-                        }}
-                      >
-                        <Settings className="h-3 w-3" />
-                        配置
-                      </Button>
-                    </div>
-
-                    {lastExecution && (
-                      <div className="flex items-center justify-between border-t border-border/60 pt-1.5">
-                        <span className="text-muted-foreground">本次实际执行</span>
-                        <span
-                          className={cn(
-                            'font-medium',
-                            lastExecution.provider === 'chrome-built-in'
-                              ? 'text-emerald-700 dark:text-emerald-300'
-                              : 'text-foreground'
-                          )}
+                        {localBlocker.kind === 'unavailable' && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={() =>
+                              void handleCopyHelperText(
+                                'chrome://on-device-internals',
+                                '已复制 chrome://on-device-internals'
+                              )
+                            }
+                          >
+                            <Copy className="h-3 w-3" />
+                            复制 chrome://on-device-internals
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant={localBlocker.kind === 'language' ? 'default' : 'outline'}
+                          onClick={() => setExecutionMode('smart')}
                         >
-                          {lastExecution.provider === 'chrome-built-in'
-                            ? '本地设备已执行（正文未离开本机）'
-                            : `云端已执行：${lastExecution.cloudProvider || 'Cloud'}${lastExecution.fallback ? '（fallback 回退）' : ''}`}
-                        </span>
+                          切换为「智能选择」
+                        </Button>
+                        {!cloudConfigured && (
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={openAiSettings}
+                          >
+                            <Settings className="h-3 w-3" />
+                            配置云端 AI
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => setModeOverride('manual')}
+                        >
+                          使用手动提示词
+                        </Button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {executionMode === 'smart' && (
                     <div className="rounded-xl border border-amber-500/25 bg-amber-50/75 px-3 py-2 text-[11.5px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                      智能选择会在本地任务不支持、模型未准备或运行失败时自动切换已配置的云端 Provider；上方会显示本次实际执行路径。
+                      智能选择会在本地任务不支持、非英文文稿或模型未准备时自动使用已配置的云端 Provider；上方会显示本次实际执行路径。
                     </div>
                   )}
 
@@ -435,7 +753,7 @@ ${effectiveContent}`;
                   <Bot className="mb-2.5 h-10 w-10 text-muted-foreground/50" />
                   <p className="text-sm font-medium text-foreground">请先配置云端 AI API</p>
                   <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                    或者在设置中切换为「智能选择 / Chrome 本地 AI」；也可直接使用右侧「手动提示词协作」零配置协作。
+                    或者直接在上方切换为「智能选择 / Chrome 本地 AI」；也可使用右侧「手动提示词协作」零配置协作。
                   </p>
                   <div className="mt-4 flex items-center gap-2">
                     <Button
@@ -446,14 +764,7 @@ ${effectiveContent}`;
                     >
                       使用手动模式
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        handleDialogOpenChange(false);
-                        setSettingsOpen(true);
-                      }}
-                    >
+                    <Button type="button" size="sm" onClick={openAiSettings}>
                       <Settings className="h-3.5 w-3.5" />
                       立即配置
                     </Button>

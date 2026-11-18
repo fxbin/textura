@@ -33,6 +33,15 @@ Textura 的 AI 执行策略是 **Local-first AI + Cloud fallback**。
 - 安全上下文校验：若处于非 HTTPS / 非 localhost 环境，直接标记为 `非安全上下文（insecure-context）`。
 - 诊断详情（Diagnostics）：设置页内置可展开的诊断详情面板，可对照 Chrome 版本、Origin、安全上下文、Prompt / Summarizer 原始状态与 `error/reason`，并一键复制 `chrome://on-device-internals` 进行核验。
 
+### 桌面版 Chrome 开启条件（若显示 `api-missing`）
+
+1. 使用桌面端 Chrome（建议 138+，且满足官方端侧模型硬件与磁盘 >= 22GB 要求）；Tauri 桌面版内置系统 WebView 不包含 Gemini Nano 组件。
+2. 如当前网页渠道默认尚未开放相关全局接口，请在 Chrome 地址栏打开以下 Flags 并设为 `Enabled`，随后**完全重启浏览器**：
+   - `chrome://flags/#optimization-guide-on-device-model`（硬件门槛测试可设为 `Enabled BypassPerfRequirement`）
+   - `chrome://flags/#prompt-api-for-gemini-nano`
+   - `chrome://flags/#summarization-api-for-gemini-nano`
+3. 重启后回到 Textura **偏好设置 → AI 配置 → Chrome 本地 AI** 点击「重新检测」，或在 **AI 写作助手** 弹窗的提示横幅内直接点击准备模型；必要时打开 `chrome://on-device-internals` 核对端侧模型加载状态。
+
 可能状态：
 
 - `available`：可以立即本地执行。
@@ -61,8 +70,11 @@ AI Assistant 会显示“本次实际执行”，例如 `Chrome 本地 AI` 或 `
 显式选择 `Chrome 本地 AI` 是严格隐私边界：
 
 - 不静默 fallback Cloud。
-- 不支持的语言直接报错。
-- 模型未准备直接提示去设置页准备。
+- **区分具体拦截原因（不再笼统提示）**：
+  - 接口未开启 / 非 Chrome / Tauri WebView（`explicit-local-api-unavailable` + 对应 Flag / 运行环境提示）；
+  - 当前文稿为中文或非英文（`explicit-local-language-unsupported` / `summarizer-language-unsupported`，明确说明 Chrome 本地 AI 当前仅支持英文，引导一键切回「智能选择」或「仅云端」）；
+  - 模型未准备（`local-download-required`，支持弹窗内或设置页直接点击下载）；
+  - 任务不支持（`local-task-unsupported`，如 `排版`）。
 - 用户点击停止后不会转而调用 Cloud。
 
 ## 兼容性矩阵

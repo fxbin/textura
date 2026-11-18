@@ -6,7 +6,9 @@ import {
 } from './types';
 import {
   formatLocalAiErrorMessage,
+  getLocalAiApiMissingMessage,
   isChromeBuiltInTextLanguage,
+  isInsecureBrowserContext,
   normalizeBuiltInAvailability,
   normalizeDownloadProgress,
 } from './chromeBuiltIn';
@@ -88,10 +90,6 @@ export class ChromeSummarizerError extends Error {
   }
 }
 
-function isInsecureBrowserContext(): boolean {
-  return typeof window !== 'undefined' && window.isSecureContext === false;
-}
-
 function getSummarizerApi(): SummarizerApiLike | null {
   if (typeof globalThis === 'undefined') return null;
   return (globalThis as GlobalWithSummarizer).Summarizer ?? null;
@@ -138,7 +136,7 @@ export async function getChromeSummarizerCapability(
       requiresDownload: false,
       canCreate: false,
       reason: 'api-missing',
-      reasonMessage: '当前浏览器未暴露 Summarizer API 接口。',
+      reasonMessage: getLocalAiApiMissingMessage('summarizer'),
       checkedOptions: coreOptions,
     };
   }

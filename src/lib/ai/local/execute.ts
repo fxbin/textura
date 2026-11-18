@@ -9,7 +9,7 @@ import {
   runChromeSummarizer,
 } from './chromeSummarizer';
 import { inferPrimaryTextLanguage, routeAiExecution } from './router';
-import type { LocalAiExecutionMode } from './types';
+import type { ChromeBuiltInCapability, LocalAiExecutionMode } from './types';
 
 export interface AiExecutionMeta {
   provider: 'chrome-built-in' | 'cloud';
@@ -56,12 +56,35 @@ function hasCloudConfig(config: AiApiConfig): boolean {
   return Boolean(config.apiKey.trim());
 }
 
-function localUnavailableMessage(reason: string): string {
+function nonEnglishUnsupportedMessage(inputLanguage: string): string {
+  if (inputLanguage === 'zh') {
+    return '当前文稿为中文，而 Chrome 本地 AI（Gemini Nano）目前仅支持英文内容。请切换为「智能选择」或「仅云端」处理中文，或选中英文段落后再试。';
+  }
+  return 'Chrome 本地 AI 业务路由当前仅支持英文内容；请切换为「智能选择」或「仅云端」，或选中英文段落后再试。';
+}
+
+function appendNonEnglishNote(message: string | undefined, inputLanguage: string): string {
+  const base = message || '当前浏览器或设备暂不支持 Chrome 本地 AI。';
+  return inputLanguage !== 'en' ? `${base}（另注：Chrome 本地 AI 目前也仅支持英文内容）` : base;
+}
+
+function localUnavailableMessage(
+  reason: string,
+  inputLanguage: string,
+  localCapability?: ChromeBuiltInCapability,
+): string {
   switch (reason) {
     case 'local-task-unsupported':
-      return '当前 Chrome 本地 AI 尚不支持该任务；请切换到智能选择或云端模式。';
+      return '当前 Chrome 本地 AI 暂不支持「排版」任务；请切换为「智能选择」或「仅云端」，或改用润色、摘要、扩写、纠错。';
     case 'local-download-required':
-      return 'Chrome 本地模型尚未准备完成，请先在“偏好设置 → AI 配置”中点击对应的准备按钮。';
+      return 'Chrome 本地模型尚未准备完成，请先在「偏好设置 → AI 配置」中点击准备按钮下载模型。';
+    case 'explicit-local-language-unsupported':
+      return nonEnglishUnsupportedMessage(inputLanguage);
+    case 'explicit-local-api-unavailable':
+      if (!localCapability?.apiPresent && inputLanguage !== 'en') {
+        return appendNonEnglishNote(localCapability?.reasonMessage, inputLanguage);
+      }
+      return localCapability?.reasonMessage || '当前浏览器、设备或安全上下文暂不支持 Chrome 本地 AI。';
     case 'explicit-local-unavailable':
       return '当前浏览器、设备或文本语言暂不支持 Chrome 本地 AI。';
     default:
@@ -107,19 +130,7 @@ async function executeSummarizeTask(
     });
   }
 
-  if (inputLanguage !== 'en') {
-    if (executionMode === 'chrome-built-in') {
-      return {
-        success: false,
-        error: 'Chrome Summarizer 当前只对受支持语言启用；中文摘要请使用智能选择或云端模式。',
-        execution: {
-          provider: 'chrome-built-in',
-          reason: 'summarizer-language-unsupported',
-          fallback: false,
-        },
-      };
-    }
-
+  if (executionMode === 'smart' && inputLanguage !== 'en') {
     return runCloud(config, content, onChunk, 'summarize', {
       provider: 'cloud',
       reason: 'summarizer-language-unsupported',
@@ -130,6 +141,32 @@ async function executeSummarizeTask(
 
   const capability = await getChromeSummarizerCapability('en');
 
+  if (executionMode === 'chrome-built-in') {
+    if (capability.reason === 'api-missing' || capability.reason === 'insecure-context') {
+      return {
+        success: false,
+        error: appendNonEnglishNote(capability.reasonMessage, inputLanguage),
+        execution: {
+          provider: 'chrome-built-in',
+          reason: 'explicit-local-api-unavailable',
+          fallback: false,
+        },
+      };
+    }
+
+    if (inputLanguage !== 'en') {
+      return {
+        success: false,
+        error: nonEnglishUnsupportedMessage(inputLanguage),
+        execution: {
+          provider: 'chrome-built-in',
+          reason: 'summarizer-language-unsupported',
+          fallback: false,
+        },
+      };
+    }
+  }
+
   if (capability.availability !== 'available') {
     const reason = capability.availability === 'downloadable' || capability.availability === 'downloading'
       ? 'summarizer-download-required'
@@ -139,8 +176,8 @@ async function executeSummarizeTask(
       return {
         success: false,
         error: capability.requiresDownload
-          ? 'Chrome 摘要模型尚未准备，请先在“偏好设置 → AI 配置”中准备摘要模型。'
-          : '当前浏览器或设备不支持 Chrome Summarizer。',
+          ? 'Chrome 摘要模型尚未准备，请先在「偏好设置 → AI 配置」中点击准备按钮下载模型。'
+          : (capability.reasonMessage || '当前浏览器或设备不支持 Chrome Summarizer。'),
         execution: {
           provider: 'chrome-built-in',
           reason,
@@ -242,9 +279,12 @@ export async function executeAiTask({
     );
   }
 
-  let localCapability;
+  let localCapability: ChromeBuiltInCapability | undefined;
 
-  if (executionMode !== 'cloud' && inputLanguage === 'en' && LOCAL_TASK_PROMPTS[taskMode]) {
+  if (
+    LOCAL_TASK_PROMPTS[taskMode] &&
+    (executionMode === 'chrome-built-in' || (executionMode === 'smart' && inputLanguage === 'en'))
+  ) {
     localCapability = await getChromeBuiltInCapability({
       inputLanguage: 'en',
       outputLanguage: 'en',
@@ -273,7 +313,7 @@ export async function executeAiTask({
   if (!route.canExecute) {
     return {
       success: false,
-      error: localUnavailableMessage(route.reason),
+      error: localUnavailableMessage(route.reason, inputLanguage, localCapability),
       execution: {
         provider: 'chrome-built-in',
         reason: route.reason,
@@ -286,7 +326,7 @@ export async function executeAiTask({
   if (!localPrompt) {
     return {
       success: false,
-      error: localUnavailableMessage('local-task-unsupported'),
+      error: localUnavailableMessage('local-task-unsupported', inputLanguage, localCapability),
       execution: {
         provider: 'chrome-built-in',
         reason: 'local-task-unsupported',

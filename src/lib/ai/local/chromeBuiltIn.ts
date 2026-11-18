@@ -27,7 +27,10 @@ interface LanguageModelApiLike {
   create(options: LanguageModelOptions): Promise<ChromeBuiltInPromptSession>;
 }
 
-type GlobalWithLanguageModel = typeof globalThis & { LanguageModel?: LanguageModelApiLike };
+type GlobalWithLanguageModel = typeof globalThis & {
+  LanguageModel?: LanguageModelApiLike;
+  ai?: { languageModel?: unknown; summarizer?: unknown };
+};
 type NavigatorWithUserActivation = Navigator & { userActivation?: { isActive: boolean } };
 
 export type ChromeBuiltInErrorCode =
@@ -90,8 +93,37 @@ export function formatLocalAiErrorMessage(error: unknown): string | undefined {
   return String(error);
 }
 
-function isInsecureBrowserContext(): boolean {
+export function isInsecureBrowserContext(): boolean {
   return typeof window !== 'undefined' && window.isSecureContext === false;
+}
+
+export function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+}
+
+function buildApiMissingMessage(kind: 'prompt' | 'summarizer'): string {
+  if (isTauriRuntime()) {
+    return '当前处于 Tauri 桌面端内置 WebView，不包含 Chrome Gemini Nano 组件；请切换为「智能选择」或「仅云端」。';
+  }
+
+  const legacyAi =
+    typeof globalThis !== 'undefined' ? (globalThis as GlobalWithLanguageModel).ai : undefined;
+
+  if (kind === 'prompt') {
+    if (legacyAi?.languageModel) {
+      return '检测到旧版 window.ai 接口；请升级至桌面版 Chrome 138+，并在 chrome://flags 中开启 #prompt-api-for-gemini-nano。';
+    }
+    return '当前浏览器未开启 LanguageModel (Prompt API) 接口。若使用桌面版 Chrome，请在 chrome://flags 中将 #prompt-api-for-gemini-nano 与 #optimization-guide-on-device-model 设为 Enabled 后重启浏览器；其他浏览器请使用「智能选择」或「仅云端」。';
+  }
+
+  if (legacyAi?.summarizer) {
+    return '检测到旧版 window.ai 接口；请升级至桌面版 Chrome 138+，并在 chrome://flags 中开启 #summarization-api-for-gemini-nano。';
+  }
+  return '当前浏览器未开启 Summarizer API 接口。若使用桌面版 Chrome，请在 chrome://flags 中将 #summarization-api-for-gemini-nano 与 #optimization-guide-on-device-model 设为 Enabled 后重启浏览器；其他浏览器请使用「智能选择」或「仅云端」。';
+}
+
+export function getLocalAiApiMissingMessage(kind: 'prompt' | 'summarizer'): string {
+  return buildApiMissingMessage(kind);
 }
 
 function getLanguageModelApi(): LanguageModelApiLike | null {
@@ -164,7 +196,7 @@ export async function getChromeBuiltInCapability(
       requiresDownload: false,
       canCreateSession: false,
       reason: 'api-missing',
-      reasonMessage: '当前浏览器未暴露 LanguageModel (Prompt API) 接口。',
+      reasonMessage: getLocalAiApiMissingMessage('prompt'),
       checkedOptions: coreOptions,
     };
   }
