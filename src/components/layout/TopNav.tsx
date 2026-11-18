@@ -1,11 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import Image from 'next/image';
+import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
-
-// next/image 的 string src 不会自动拼接 basePath，需手动处理。
-const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 import {
   Check,
   ChevronDown,
@@ -16,37 +13,78 @@ import {
   FileCode,
   FileText,
   FolderOpen,
+  Loader2,
+  Moon,
+  PanelRightClose,
   PanelRightOpen,
+  Pencil,
   Printer,
   RotateCcw,
+  Sparkles,
+  Sun,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { copyRichContent } from '@/lib/clipboard';
-import { isWeChatDarkThemeRisk, buildCopyHtml } from '@/lib/wechatCompat';
 import { examples } from '@/lib/examples';
-import { calculateWordCount } from '@/lib/utils';
-import { ThemeSelector } from '@/components/editor/ThemeSelector';
+import { cn } from '@/lib/utils';
 import { useTauriRuntime } from '@/hooks/useTauriRuntime';
+import { useWeChatCopy } from '@/hooks/useWeChatCopy';
 import {
   openDocumentFromFile,
   openRecentDocument,
   saveDocumentToFile,
   useDocumentStore,
 } from '@/store/documentStore';
+import { useHistoryStore } from '@/store/historyStore';
 import { useEditorStore } from '@/store/useEditorStore';
-import { SettingsDialog } from './SettingsDialog';
+import { BrandLogo } from './BrandLogo';
 import { HistoryDialog } from './HistoryDialog';
+import { SettingsDialog } from './SettingsDialog';
+
+interface TopNavProps {
+  isCompactViewport?: boolean;
+  isCompactThemeOpen?: boolean;
+  onToggleThemeDrawer?: () => void;
+}
+
+interface PendingGuardAction {
+  label: string;
+  run: () => void | Promise<void>;
+}
+
+function formatSourceLabel(source?: string) {
+  switch (source) {
+    case 'file':
+      return '本地文件';
+    case 'example':
+      return '示例模板';
+    case 'recovery':
+      return '恢复草稿';
+    default:
+      return '本地草稿';
+  }
+}
 
 function formatDocumentMeta(currentPath?: string, source?: string, lastSavedAt?: number) {
   if (currentPath) {
@@ -54,7 +92,7 @@ function formatDocumentMeta(currentPath?: string, source?: string, lastSavedAt?:
   }
 
   if (lastSavedAt) {
-    return `上次保存：${new Date(lastSavedAt).toLocaleString('zh-CN', {
+    return `保存于 ${new Date(lastSavedAt).toLocaleString('zh-CN', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -62,16 +100,7 @@ function formatDocumentMeta(currentPath?: string, source?: string, lastSavedAt?:
     })}`;
   }
 
-  switch (source) {
-    case 'example':
-      return '示例文档';
-    case 'recovery':
-      return '恢复草稿';
-    case 'file':
-      return '本地文件';
-    default:
-      return '本地草稿';
-  }
+  return formatSourceLabel(source);
 }
 
 function inlineComputedStyles(sourceElement: Element, targetElement: Element) {
@@ -179,69 +208,116 @@ function buildStandaloneDocument(options: {
 </html>`;
 }
 
-export function TopNav() {
+export function TopNav({
+  isCompactViewport = false,
+  isCompactThemeOpen = false,
+  onToggleThemeDrawer,
+}: TopNavProps) {
   const isSidebarOpen = useEditorStore((s) => s.isSidebarOpen);
-  const setSidebarOpen = useEditorStore((s) => s.setSidebarOpen);
+  const toggleSidebar = useEditorStore((s) => s.toggleSidebar);
   const resetMarkdown = useEditorStore((s) => s.resetMarkdown);
-  const fontSize = useEditorStore((s) => s.fontSize);
-  const setFontSize = useEditorStore((s) => s.setFontSize);
   const markdown = useEditorStore((s) => s.markdown);
-  const theme = useEditorStore((s) => s.theme);
-  const savedThemes = useEditorStore((s) => s.savedThemes);
-  const customThemeCss = useEditorStore((s) => s.customThemeCss);
   const setMarkdown = useEditorStore((s) => s.setMarkdown);
   const isStatsVisible = useEditorStore((s) => s.isStatsVisible);
   const toggleStats = useEditorStore((s) => s.toggleStats);
+
   const currentDocument = useDocumentStore((state) => state.currentDocument);
   const recentDocuments = useDocumentStore((state) => state.recentDocuments);
   const isDirty = useDocumentStore((state) => state.isDirty);
   const openDocumentSession = useDocumentStore((state) => state.openDocumentSession);
   const markCurrentDocumentSaved = useDocumentStore((state) => state.markCurrentDocumentSaved);
+  const renameCurrentDocument = useDocumentStore((state) => state.renameCurrentDocument);
+
   const tauriRuntime = useTauriRuntime();
-
-  const currentDocumentName = currentDocument?.name || '未命名文档.md';
-  const currentDocumentMeta = formatDocumentMeta(currentDocument?.path, currentDocument?.source, currentDocument?.lastSavedAt);
-  const canDirectSave = tauriRuntime && Boolean(currentDocument?.path);
-  const recentEntries = recentDocuments.filter((item) => item.id !== currentDocument?.id).slice(0, 6);
-
-  const confirmDiscardChanges = React.useCallback(
-    (actionLabel: string) => {
-      if (!isDirty) {
-        return true;
-      }
-
-      return window.confirm(`当前文档“${currentDocumentName}”还有未保存修改，仍要${actionLabel}吗？`);
-    },
-    [currentDocumentName, isDirty]
+  const { copyToWeChat, isCopying, hasCopied, isPresetTheme } = useWeChatCopy();
+  const { resolvedTheme, setTheme: setAppTheme } = useTheme();
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
   );
 
-  const handleReset = () => {
-    if (!confirmDiscardChanges('恢复默认示例')) {
-      return;
+  const [isRenaming, setIsRenaming] = React.useState(false);
+  const [draftName, setDraftName] = React.useState('');
+  const [pendingAction, setPendingAction] = React.useState<PendingGuardAction | null>(null);
+
+  const currentDocumentName = currentDocument?.name || '未命名文档.md';
+  const currentDocumentMeta = formatDocumentMeta(
+    currentDocument?.path,
+    currentDocument?.source,
+    currentDocument?.lastSavedAt
+  );
+  const canDirectSave = tauriRuntime && Boolean(currentDocument?.path);
+  const recentEntries = recentDocuments.filter((item) => item.id !== currentDocument?.id).slice(0, 6);
+  const isThemePanelOpen = isCompactViewport ? isCompactThemeOpen : isSidebarOpen;
+
+  const startRenaming = () => {
+    setDraftName(currentDocumentName);
+    setIsRenaming(true);
+  };
+
+  const commitRename = () => {
+    const trimmed = draftName.trim();
+    if (trimmed && trimmed !== currentDocumentName) {
+      renameCurrentDocument(trimmed);
+      toast.success('已更新文档名称');
+    }
+    setIsRenaming(false);
+  };
+
+  const cancelRename = () => {
+    setIsRenaming(false);
+    setDraftName(currentDocumentName);
+  };
+
+  const runWithUnsavedGuard = React.useCallback(
+    (label: string, action: () => void | Promise<void>) => {
+      if (!isDirty) {
+        void action();
+        return;
+      }
+
+      setPendingAction({ label, run: action });
+    },
+    [isDirty]
+  );
+
+  const handleConfirmDiscard = async (saveSnapshotFirst: boolean) => {
+    if (!pendingAction) return;
+    const action = pendingAction;
+    setPendingAction(null);
+
+    if (saveSnapshotFirst) {
+      useHistoryStore.getState().addSnapshot(markdown, '切换文档前备份', currentDocument?.id);
+      toast.success('已备份当前版本到历史快照');
     }
 
-    resetMarkdown();
-    const content = useEditorStore.getState().markdown;
-    openDocumentSession({
-      name: '默认示例.md',
-      content,
-      source: 'example',
+    await action.run();
+  };
+
+  const handleReset = () => {
+    runWithUnsavedGuard('恢复默认示例', () => {
+      resetMarkdown();
+      const content = useEditorStore.getState().markdown;
+      openDocumentSession({
+        name: '默认示例.md',
+        content,
+        source: 'example',
+      });
+      toast.success('已恢复默认示例');
     });
-    toast.success('已恢复默认示例');
   };
 
   const handleLoadExample = (content: string, name: string) => {
-    if (!confirmDiscardChanges(`加载示例“${name}”`)) {
-      return;
-    }
-
-    setMarkdown(content);
-    openDocumentSession({
-      name: `${name}.md`,
-      content,
-      source: 'example',
+    runWithUnsavedGuard(`加载示例「${name}」`, () => {
+      setMarkdown(content);
+      openDocumentSession({
+        name: `${name}.md`,
+        content,
+        source: 'example',
+      });
+      toast.success(`已加载示例：${name}`);
     });
-    toast.success(`已加载示例：${name}`);
   };
 
   const handleSaveMarkdown = async (forceDialog = false) => {
@@ -282,8 +358,9 @@ export function TopNav() {
 
       const exportClone = clonePreviewWithInlineStyles(previewElement);
       const shellWidth = Math.max(Math.round(previewElement.getBoundingClientRect().width), 320);
+      const baseTitle = currentDocumentName.replace(/\.(md|markdown|txt)$/i, '') || 'Textura Export';
       const fullHtml = buildStandaloneDocument({
-        title: 'Textura Export',
+        title: baseTitle,
         shellWidth,
         contentHtml: exportClone.outerHTML,
       });
@@ -292,7 +369,7 @@ export function TopNav() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `textura-export-${new Date().toISOString().split('T')[0]}.html`;
+      anchor.download = `${baseTitle}-${new Date().toISOString().split('T')[0]}.html`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -309,7 +386,7 @@ export function TopNav() {
     const shellWidth = Math.max(Math.round(previewElement.getBoundingClientRect().width), 320);
 
     return buildStandaloneDocument({
-      title: 'Textura PDF Export',
+      title: currentDocumentName.replace(/\.(md|markdown|txt)$/i, '') || 'Textura PDF Export',
       shellWidth,
       contentHtml: clone.outerHTML,
       printMode: true,
@@ -358,9 +435,7 @@ export function TopNav() {
       await new Promise<void>((resolve) => {
         let settled = false;
         const cleanup = () => {
-          if (settled) {
-            return;
-          }
+          if (settled) return;
           settled = true;
           frameWindow.removeEventListener('afterprint', cleanup);
           setTimeout(() => {
@@ -399,336 +474,366 @@ export function TopNav() {
     }
   };
 
-  const handleOpen = async () => {
-    if (!confirmDiscardChanges('打开新文件')) {
-      return;
-    }
-
-    const result = await openDocumentFromFile();
-    if (result.success && result.content !== undefined) {
-      setMarkdown(result.content);
-      openDocumentSession({
-        name: result.name || '导入文档.md',
-        content: result.content,
-        path: result.path,
-        source: result.path ? 'file' : 'untitled',
-      });
-      toast.success(`已打开：${result.name}`);
-      if (result.warning) {
-        toast.warning(result.warning);
+  const handleOpen = () => {
+    runWithUnsavedGuard('打开本地文件', async () => {
+      const result = await openDocumentFromFile();
+      if (result.success && result.content !== undefined) {
+        setMarkdown(result.content);
+        openDocumentSession({
+          name: result.name || '导入文档.md',
+          content: result.content,
+          path: result.path,
+          source: result.path ? 'file' : 'untitled',
+        });
+        toast.success(`已打开：${result.name}`);
+        if (result.warning) {
+          toast.warning(result.warning);
+        }
+        return;
       }
-      return;
-    }
 
-    if (result.error && result.error !== '已取消打开文件。') {
-      toast.error(result.error);
-    }
+      if (result.error && result.error !== '已取消打开文件。') {
+        toast.error(result.error);
+      }
+    });
   };
 
-  const handleOpenRecent = async (documentId: string) => {
-    if (!confirmDiscardChanges('打开最近文档')) {
-      return;
-    }
-
+  const handleOpenRecent = (documentId: string) => {
     const target = recentDocuments.find((item) => item.id === documentId);
     if (!target) {
       toast.error('未找到对应的最近文档记录');
       return;
     }
 
-    const result = await openRecentDocument(target);
-    if (result.success && result.content !== undefined) {
-      setMarkdown(result.content);
-      openDocumentSession({
-        id: target.id,
-        name: result.name || target.name,
-        content: result.content,
-        path: result.path ?? target.path,
-        source: target.source,
-        lastSavedAt: target.lastSavedAt,
-      });
-      toast.success(`已打开最近文档：${target.name}`);
-      return;
-    }
-
-    toast.error(result.error || '打开最近文档失败');
-  };
-
-  const handleCopy = async () => {
-    try {
-      const previewElement = document.getElementById('print-area');
-      if (!previewElement) {
-        toast.error('未找到预览内容');
+    runWithUnsavedGuard(`切换至「${target.name}」`, async () => {
+      const result = await openRecentDocument(target);
+      if (result.success && result.content !== undefined) {
+        setMarkdown(result.content);
+        openDocumentSession({
+          id: target.id,
+          name: result.name || target.name,
+          content: result.content,
+          path: result.path ?? target.path,
+          source: target.source,
+          lastSavedAt: target.lastSavedAt,
+        });
+        toast.success(`已打开最近文档：${target.name}`);
         return;
       }
 
-      const isPresetTheme = theme !== 'custom' && !savedThemes.some((item) => item.id === theme);
+      toast.error(result.error || '打开最近文档失败');
+    });
+  };
 
-      const statsHtml = isStatsVisible
-        ? (() => {
-            const { charCount, readTime } = calculateWordCount(markdown);
-            return `
-      <section style="
-        margin: 20px 10px;
-        text-align: center;
-        font-size: 14px;
-        color: #888;
-        letter-spacing: 0.5px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      ">
-        <span style="
-          display: inline-block;
-          padding: 4px 12px;
-          background-color: #f7f7f7;
-          border-radius: 100px;
-          border: 1px solid #eee;
-          white-space: nowrap;
-          line-height: 1.4;
-        ">
-          字数 ${charCount} <span style="margin: 0 4px; color: #ddd;">|</span> 约 ${readTime} 分钟
-        </span>
-      </section>
-    `;
-          })()
-        : '';
-
-      const html = await buildCopyHtml(
-        previewElement.innerHTML,
-        theme,
-        isPresetTheme,
-        customThemeCss,
-        statsHtml,
-      );
-
-      const result = await copyRichContent(html, markdown);
-      if (!result.ok) {
-        toast.error('复制失败，请检查浏览器剪贴板权限');
-        return;
-      }
-
-      if (isPresetTheme) {
-        if (isWeChatDarkThemeRisk(theme)) {
-          toast.warning('当前为暗色主题，微信可能剥离深色背景导致文字不可见。建议使用浅色主题。');
-        } else {
-          toast.success('已复制到剪贴板，请直接粘贴到公众号后台');
-        }
-      } else {
-        toast.warning('已复制当前预览 HTML。自定义主题在微信中可能丢失样式。');
-      }
-    } catch (error) {
-      console.error('Copy failed:', error);
-      toast.error('复制失败，请重试');
+  const handleThemeToggleClick = () => {
+    if (isCompactViewport && onToggleThemeDrawer) {
+      onToggleThemeDrawer();
+    } else {
+      toggleSidebar();
     }
   };
 
-  const fontSizes = [
-    { size: 14, label: '更小' },
-    { size: 15, label: '稍小' },
-    { size: 16, label: '推荐' },
-    { size: 17, label: '稍大' },
-    { size: 18, label: '更大' },
-  ];
+  const isDark = mounted && resolvedTheme === 'dark';
 
   return (
-    <header className="sticky top-0 z-50 flex h-14 w-full shrink-0 items-center justify-between border-b border-border/40 bg-background/80 px-4 backdrop-blur-xl transition-all duration-300">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="group flex shrink-0 cursor-pointer items-center gap-2 transition-opacity hover:opacity-80">
-          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md">
-            <Image src={`${BASE_PATH}/logo.png`} alt="Textura Logo" width={32} height={32} className="object-cover" />
-          </div>
-          <div className="flex flex-col justify-center">
-            <span className="text-sm font-bold tracking-tight text-foreground/90">Textura</span>
-            <span className="text-[10px] font-medium text-muted-foreground">Typesetting Studio</span>
-          </div>
-        </div>
+    <>
+      <header className="sticky top-0 z-40 flex h-[52px] w-full shrink-0 items-center justify-between gap-2 border-b border-border/75 bg-background/85 px-3 backdrop-blur-xl sm:px-4">
+        {/* Left: Brand + Document Workspace Capsule */}
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+          <BrandLogo hideWordmarkOnMobile />
 
-        <div className="hidden min-w-0 border-l pl-3 md:flex md:flex-col">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">{currentDocumentName}</span>
-            <span
-              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                isDirty ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-              }`}
-            >
-              {isDirty ? '未保存' : '已保存'}
-            </span>
-          </div>
-          <span className="truncate text-[11px] text-muted-foreground">{currentDocumentMeta}</span>
-        </div>
-      </div>
+          <div className="h-5 w-px shrink-0 bg-border/80" />
 
-      <div className="flex items-center gap-1.5 md:gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="hidden h-8 gap-1.5 text-muted-foreground hover:text-foreground md:flex">
-              <FileText className="h-4 w-4" />
-              <span className="text-xs font-medium">示例</span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>加载示例内容</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {examples.map((example) => (
-              <DropdownMenuItem
-                key={example.id}
-                onClick={() => handleLoadExample(example.content, example.name)}
-                className="flex flex-col items-start gap-1 py-2"
-              >
-                <span className="font-medium">{example.name}</span>
-                <span className="text-xs text-muted-foreground">{example.description}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleReset} className="text-destructive focus:text-destructive">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              恢复默认
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Separator orientation="vertical" className="hidden h-4 md:block" />
-
-        <div className="flex items-center gap-0.5 rounded-lg border border-border/50 bg-secondary/50 p-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={handleReset}>
-                <RotateCcw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>恢复默认示例</TooltipContent>
-          </Tooltip>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                <FolderOpen className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuLabel>文档</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleOpen}>打开本地文件</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs text-muted-foreground">最近文档</DropdownMenuLabel>
-              {recentEntries.length === 0 ? (
-                <DropdownMenuItem disabled>暂无最近文档</DropdownMenuItem>
-              ) : (
-                recentEntries.map((item) => (
-                  <DropdownMenuItem key={item.id} onClick={() => handleOpenRecent(item.id)} className="flex flex-col items-start gap-0.5 py-2">
-                    <span className="font-medium">{item.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {item.path || formatDocumentMeta(undefined, item.source, item.lastSavedAt)}
+          <div className="flex min-w-0 items-center gap-1 rounded-lg border border-border/70 bg-card/85 px-2 py-1 shadow-2xs">
+            {isRenaming ? (
+              <Input
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                autoFocus
+                aria-label="重命名文档"
+                className="h-6 w-32 border-primary/40 bg-background px-1.5 text-xs font-medium sm:w-44"
+              />
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={startRenaming}
+                    className="group/rename flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-muted/70"
+                  >
+                    <span className="max-w-[96px] truncate text-xs font-medium text-foreground sm:max-w-[180px] sm:text-[13px]">
+                      {currentDocumentName}
                     </span>
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                    <Pencil className="hidden h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/rename:opacity-80 sm:block" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>点击重命名文档</TooltipContent>
+              </Tooltip>
+            )}
 
+            <span
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                isDirty
+                  ? 'bg-amber-500/12 text-amber-700 dark:text-amber-300'
+                  : 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+              )}
+              title={currentDocumentMeta}
+            >
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  isDirty ? 'bg-amber-500' : 'bg-emerald-500'
+                )}
+              />
+              <span className="hidden sm:inline">{isDirty ? '未保存' : '已保存'}</span>
+            </span>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="文档与示例菜单"
+                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-72">
+                <div className="px-2.5 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-semibold text-foreground">
+                      {currentDocumentName}
+                    </span>
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      {tauriRuntime ? 'Tauri 桌面端' : 'Web 版'}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                    {currentDocumentMeta}
+                  </p>
+                </div>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem onClick={handleOpen}>
+                  <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                  <span>打开本地文件 (MD / TXT / DOCX)</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Sparkles className="h-4 w-4 text-muted-foreground" />
+                    <span>加载示例模板</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-60">
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      精选排版示例
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {examples.map((example) => (
+                      <DropdownMenuItem
+                        key={example.id}
+                        onClick={() => handleLoadExample(example.content, example.name)}
+                        className="flex flex-col items-start gap-0.5 py-2"
+                      >
+                        <span className="text-xs font-medium">{example.name}</span>
+                        <span className="text-[11px] text-muted-foreground">{example.description}</span>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleReset}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>恢复默认介绍文档</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
+                  最近文档 ({recentEntries.length})
+                </DropdownMenuLabel>
+                {recentEntries.length === 0 ? (
+                  <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                    暂无其他最近文档
+                  </DropdownMenuItem>
+                ) : (
+                  recentEntries.map((item) => (
+                    <DropdownMenuItem
+                      key={item.id}
+                      onClick={() => handleOpenRecent(item.id)}
+                      className="flex flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <span className="w-full truncate text-xs font-medium">{item.name}</span>
+                      <span className="w-full truncate text-[11px] text-muted-foreground">
+                        {item.path || formatDocumentMeta(undefined, item.source, item.lastSavedAt)}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Right: Utilities + Theme Panel Toggle + Primary Copy CTA */}
+        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                <Download className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="保存与导出"
+                    className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="hidden xl:inline">导出</span>
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>保存 Markdown 或导出 HTML / PDF</TooltipContent>
+            </Tooltip>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>导出与保存</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">保存与导出</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => handleSaveMarkdown(false)}>
-                <File className="mr-2 h-4 w-4 text-muted-foreground" />
+                <File className="h-4 w-4 text-muted-foreground" />
                 <span>{tauriRuntime ? '保存 Markdown' : '下载 Markdown'}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleSaveMarkdown(true)}>
-                <File className="mr-2 h-4 w-4 text-muted-foreground" />
+                <FileText className="h-4 w-4 text-muted-foreground" />
                 <span>{tauriRuntime ? '另存为…' : '下载副本'}</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleExportHtml}>
-                <FileCode className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>导出 HTML</span>
+                <FileCode className="h-4 w-4 text-muted-foreground" />
+                <span>导出独立 HTML</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleExportPdf}>
-                <Printer className="mr-2 h-4 w-4 text-muted-foreground" />
+                <Printer className="h-4 w-4 text-muted-foreground" />
                 <span>打印 / 导出 PDF</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={toggleStats}>
-                <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>{isStatsVisible ? '隐藏字数统计' : '显示字数统计'}</span>
-              </DropdownMenuItem>
-              {canDirectSave && <DropdownMenuSeparator />}
+              <DropdownMenuCheckboxItem checked={isStatsVisible} onCheckedChange={toggleStats}>
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>附带字数与阅读时间</span>
+              </DropdownMenuCheckboxItem>
               {canDirectSave && (
-                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                  当前文件：{currentDocument?.path}
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem disabled className="truncate text-[11px] text-muted-foreground">
+                    {currentDocument?.path}
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
 
-        <Separator orientation="vertical" className="mx-1 h-6 bg-border/40" />
+          <HistoryDialog />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/80 hover:text-foreground">
-              <span>{fontSize}px</span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[150px]">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">正文字号</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {fontSizes.map((item) => (
-              <DropdownMenuItem
-                key={item.size}
-                onClick={() => setFontSize(item.size)}
-                className="cursor-pointer justify-between text-xs"
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setAppTheme(isDark ? 'light' : 'dark')}
+                aria-label="切换明暗外观"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
               >
-                <span className="flex items-center gap-2">
-                  <span className="font-mono">{item.size}px</span>
-                  {fontSize === item.size && <Check className="h-3.5 w-3.5 text-primary" />}
-                </span>
-                <span className="text-muted-foreground">{item.label}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isDark ? '切换至纸墨亮色模式' : '切换至砚台暗色模式'}</TooltipContent>
+          </Tooltip>
 
-        <SettingsDialog />
-        <HistoryDialog />
+          <SettingsDialog />
 
-        <Sheet open={isSidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-muted-foreground hover:text-foreground">
+          <Button
+            variant={isThemePanelOpen ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={handleThemeToggleClick}
+            className={cn(
+              'hidden h-8 gap-1.5 px-2.5 text-xs font-medium transition-colors md:inline-flex',
+              isThemePanelOpen
+                ? 'border border-primary/25 bg-primary/10 text-primary hover:bg-primary/15'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {isThemePanelOpen ? (
+              <PanelRightClose className="h-4 w-4" />
+            ) : (
               <PanelRightOpen className="h-4 w-4" />
-              <span className="text-xs font-medium">样式模板</span>
+            )}
+            <span className="hidden lg:inline">样式模板</span>
+          </Button>
+
+          <div className="mx-0.5 h-4 w-px bg-border/80" />
+
+          <Button
+            onClick={copyToWeChat}
+            disabled={isCopying}
+            size="sm"
+            className={cn(
+              'h-8 gap-1.5 rounded-lg px-3 text-xs font-medium shadow-xs transition-all active:scale-[0.98] sm:px-3.5',
+              hasCopied
+                ? 'bg-emerald-600 text-white hover:bg-emerald-600 dark:bg-emerald-500 dark:text-emerald-950'
+                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+            )}
+          >
+            {isCopying ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : hasCopied ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">
+              {hasCopied ? '已复制' : isCopying ? '处理中…' : isPresetTheme ? '复制到公众号' : '复制 HTML'}
+            </span>
+            <span className="sm:hidden">{hasCopied ? '已复制' : '复制'}</span>
+          </Button>
+        </div>
+      </header>
+
+      {/* Controlled Unsaved Changes Guard Dialog */}
+      <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => { if (!open) setPendingAction(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>当前文档有未保存修改</DialogTitle>
+            <DialogDescription>
+              文档「{currentDocumentName}」尚未保存，在{pendingAction?.label}前是否需要先保留一份快照？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setPendingAction(null)}>
+              取消
             </Button>
-          </SheetTrigger>
-          <SheetContent className="flex w-[400px] flex-col border-l bg-background p-0 sm:w-[540px]">
-            <SheetHeader className="shrink-0 border-b px-6 py-4">
-              <SheetTitle className="text-base font-medium">选择排版样式</SheetTitle>
-              <SheetDescription className="sr-only">
-                切换预设主题或编辑自定义样式，并在预览区即时查看排版效果。
-              </SheetDescription>
-            </SheetHeader>
-            <div className="flex-1 overflow-hidden">
-              <ThemeSelector />
-            </div>
-          </SheetContent>
-        </Sheet>
-
-        <Separator orientation="vertical" className="mx-1 h-6 bg-border/40" />
-
-        <Button
-          onClick={handleCopy}
-          size="sm"
-          className="h-8 gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95"
-        >
-          <Copy className="h-3.5 w-3.5" />
-          复制
-        </Button>
-      </div>
-    </header>
+            <Button variant="secondary" onClick={() => void handleConfirmDiscard(true)}>
+              存快照并继续
+            </Button>
+            <Button variant="destructive" onClick={() => void handleConfirmDiscard(false)}>
+              直接丢弃
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

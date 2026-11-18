@@ -40,6 +40,7 @@ interface DocumentState {
     path?: string;
     lastSavedAt?: number;
   }) => void;
+  renameCurrentDocument: (name: string) => void;
   removeRecentDocument: (id: string) => void;
   clearRecentDocuments: () => void;
 }
@@ -187,6 +188,30 @@ export const useDocumentStore = create<DocumentState>()(
             currentDocument: updated,
             recentDocuments: upsertRecentDocuments(state.recentDocuments, updated),
             isDirty: false,
+          };
+        }),
+
+      renameCurrentDocument: (name) =>
+        set((state) => {
+          const trimmed = name.trim();
+          if (!trimmed || !state.currentDocument) {
+            return state;
+          }
+
+          const normalizedName = ensureMarkdownName(trimmed);
+          if (normalizedName === state.currentDocument.name) {
+            return state;
+          }
+
+          const updated: DocumentRecord = {
+            ...state.currentDocument,
+            name: normalizedName,
+            lastModified: now(),
+          };
+
+          return {
+            currentDocument: updated,
+            recentDocuments: upsertRecentDocuments(state.recentDocuments, updated),
           };
         }),
 

@@ -5,8 +5,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
-  title: "Textura - 公众号排版禅模式",
-  description: "极简、优雅的微信公众号 Markdown 排版工具",
+  title: "Textura — 微信公众号 Markdown 排版工作台",
+  description: "温润沉浸的微信公众号 Markdown 排版工作台，30+ 精选内联样式主题，所见即所得，一键复制零丢失。",
 };
 
 export default function RootLayout({

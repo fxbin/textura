@@ -51,14 +51,14 @@
 src/
 ├── app/                    # Next.js App Router（静态导出）
 │   ├── layout.tsx          # 根布局：ThemeProvider + TooltipProvider + Toaster
-│   ├── page.tsx            # 主页：三栏布局 + 移动端 Tab 切换
+│   ├── page.tsx            # 主页：桌面真三栏（可折叠样式库）+ 窄屏抽屉/Tab 切换
 │   └── globals.css
 ├── components/
 │   ├── editor/             # 编辑器、预览、AI 助手、主题选择器、引导对话框
-│   ├── layout/             # 顶栏、设置、历史、文档详情栏
+│   ├── layout/             # 顶栏（含文档胶囊与矢量标识）、设置、历史、异常恢复横幅
 │   ├── preview/            # 设备外框
 │   └── ui/                 # Shadcn/UI 基础组件
-├── hooks/                  # 自动保存、滚动联动、Tauri 运行时、草稿恢复等
+├── hooks/                  # 自动保存、滚动联动、统一微信复制、Tauri 运行时、草稿恢复等
 ├── lib/
 │   ├── themes/             # 主题定义（classic/modern/extra/md-main/color-variants）
 │   ├── aiService.ts        # 多厂商 AI 调用

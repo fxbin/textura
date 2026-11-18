@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTheme } from 'next-themes';
-import { Bot, CheckCircle, Key, Moon, MonitorSmartphone, Settings, Sun, Type } from 'lucide-react';
+import { Bot, CheckCircle, Key, Laptop, Moon, MonitorSmartphone, Settings, Sun, Type } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -92,13 +92,18 @@ export function SettingsDialog() {
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setSettingsOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-foreground transition-colors">
-          <Settings className="mr-2 h-4 w-4" />
-          偏好设置
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="偏好设置"
+          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Settings className="h-4 w-4" />
+          <span className="hidden xl:inline">设置</span>
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] w-[95vw] max-w-[95vw] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>偏好设置</DialogTitle>
           <DialogDescription>
@@ -138,17 +143,23 @@ export function SettingsDialog() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
                   <div className="space-y-1">
                     <Label className="flex items-center gap-2">
-                      {appTheme === 'dark' ? <Moon className="h-4 w-4 text-muted-foreground" /> : <Sun className="h-4 w-4 text-muted-foreground" />}
+                      {appTheme === 'dark' ? (
+                        <Moon className="h-4 w-4 text-muted-foreground" />
+                      ) : appTheme === 'light' ? (
+                        <Sun className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Laptop className="h-4 w-4 text-muted-foreground" />
+                      )}
                       界面外观
                     </Label>
                     <p className="text-xs text-muted-foreground">只影响应用界面，不影响导出结果和微信复制内容。</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <Button
-                      variant={appTheme !== 'dark' ? 'default' : 'outline'}
+                      variant={appTheme === 'light' ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setTheme('light')}
                     >
@@ -160,6 +171,13 @@ export function SettingsDialog() {
                       onClick={() => setTheme('dark')}
                     >
                       暗色
+                    </Button>
+                    <Button
+                      variant={!appTheme || appTheme === 'system' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setTheme('system')}
+                    >
+                      跟随系统
                     </Button>
                   </div>
                 </div>
@@ -395,7 +413,7 @@ export function SettingsDialog() {
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm text-muted-foreground">
                   <p>历史快照数：<span className="font-medium text-foreground">{snapshots.length}</span></p>
-                  <p>自动快照每 3 分钟保存一次，入口在顶部“History”。</p>
+                  <p>自动快照每 3 分钟保存一次，入口在顶部「历史」或按 ⌘S 手动保存。</p>
                   <p>异常恢复草稿用于 IndexedDB 恢复失败或浏览器异常退出时兜底。</p>
                 </CardContent>
               </Card>
