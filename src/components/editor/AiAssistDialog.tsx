@@ -332,7 +332,23 @@ ${effectiveContent}`;
                         <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
                           {executionModeLabel(executionMode)}
                         </span>
-                        {aiApiConfig.provider !== 'none' && (
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[10.5px] font-medium',
+                            executionMode === 'chrome-built-in'
+                              ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+                              : executionMode === 'smart'
+                                ? 'bg-amber-500/12 text-amber-700 dark:text-amber-300'
+                                : 'bg-muted text-muted-foreground'
+                          )}
+                        >
+                          {executionMode === 'chrome-built-in'
+                            ? '本地执行 · 正文不上传云端'
+                            : executionMode === 'smart'
+                              ? '本地优先 · 回退云端时显式标注'
+                              : '云端执行 · 发送至所选服务商'}
+                        </span>
+                        {executionMode !== 'chrome-built-in' && aiApiConfig.provider !== 'none' && (
                           <>
                             <span className="text-muted-foreground">· 云端</span>
                             <span className="rounded bg-muted px-1.5 py-0.5 font-medium capitalize text-foreground">
@@ -362,10 +378,17 @@ ${effectiveContent}`;
                     {lastExecution && (
                       <div className="flex items-center justify-between border-t border-border/60 pt-1.5">
                         <span className="text-muted-foreground">本次实际执行</span>
-                        <span className="font-medium text-foreground">
+                        <span
+                          className={cn(
+                            'font-medium',
+                            lastExecution.provider === 'chrome-built-in'
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-foreground'
+                          )}
+                        >
                           {lastExecution.provider === 'chrome-built-in'
-                            ? 'Chrome 本地 AI'
-                            : `${lastExecution.cloudProvider || 'Cloud'}${lastExecution.fallback ? '（fallback）' : ''}`}
+                            ? '本地设备已执行（正文未离开本机）'
+                            : `云端已执行：${lastExecution.cloudProvider || 'Cloud'}${lastExecution.fallback ? '（fallback 回退）' : ''}`}
                         </span>
                       </div>
                     )}

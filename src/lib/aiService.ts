@@ -1,6 +1,6 @@
 'use client';
 
-import { AiApiProvider, AiApiConfig } from '@/store/useEditorStore';
+import type { AiApiProvider, AiApiConfig } from '@/store/useEditorStore';
 
 const FORMATTING_PROMPT = `请将以下内容重新排版为适合微信公众号阅读的 Markdown 格式。
 

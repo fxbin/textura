@@ -38,9 +38,11 @@
   - **独立设备视图**：支持模拟 iPhone、Android 或 PC 大屏预览您的最终渲染结果。
   - **可控滚动联动 (Scroll Sync)**：随心所欲在对照与解绑状态间丝滑穿梭。长文对比校对如呼吸般自然。
 
-- 🤖 **原生接入 AI 大模型**
-  - 接驳 DeepSeek、Kimi、Doubao 及自定义 API。
-  - 提供润色片段、全文总结、续写等深度辅助功能。
+- 🤖 **本地优先 + 云端多模型 AI 助手**
+  - **Local-first AI**：支持 Chrome Built-in AI（Prompt API / Summarizer API），提供「智能选择」「Chrome 本地 AI」「仅云端」三种隐私边界。
+  - **云端多厂商支持**：接驳 DeepSeek、Kimi、通义千问、智谱 GLM、豆包、OpenAI、Anthropic、Ollama 及自定义 API。
+  - 提供润色、排版、摘要、扩写、纠错等辅助能力，本地执行时正文不离开本机，fallback 回退会在界面显式标注。
+  - **Local AI 运行要求**：桌面端 Chrome 138+（Windows 10/11、macOS 13+、Linux），安全上下文（HTTPS / localhost），磁盘至少 22 GB 可用空间，GPU 显存 > 4 GB 或 16 GB 内存 + 4 核 CPU，首次显式点击下载需非计费网络；详细策略与兼容性矩阵见 [`docs/local-ai.md`](docs/local-ai.md)。
 
 - ⚡️ **极致的工程与体验**
   - **基于 `useDeferredValue` 防抖渲染**：无论左侧挂载多宏大的文本量，高频输入始终如丝般顺滑。

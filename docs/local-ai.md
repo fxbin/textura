@@ -24,12 +24,14 @@ Textura 的 AI 执行策略是 **Local-first AI + Cloud fallback**。
 
 当前生产语言边界跟随 Chrome Built-in AI 官方能力。Textura 目前只对英语开放本地业务路由；即使浏览器支持更多语言，新增业务语言也应先经过回归测试再开放。
 
-## 模型准备
+## 模型准备与 Capability Detection v2
 
-偏好设置 → AI 配置 → Chrome 本地 AI 会分别显示：
+偏好设置 → AI 配置 → Chrome 本地 AI 会分别基于官方参数独立检测并展示：
 
-- Prompt API：英文润色 / 纠错 / 扩写。
-- Summarizer API：英文摘要。
+- Prompt API：`LanguageModel.availability({ expectedInputs, expectedOutputs })` 与 `LanguageModel.create(...)` 使用完全一致的模态与语言配置（英文润色 / 纠错 / 扩写）。
+- Summarizer API：`Summarizer.availability({ type, format, length, expectedInputLanguages, outputLanguage })` 与 `Summarizer.create(...)` 参数完全对齐（英文摘要）。
+- 安全上下文校验：若处于非 HTTPS / 非 localhost 环境，直接标记为 `非安全上下文（insecure-context）`。
+- 诊断详情（Diagnostics）：设置页内置可展开的诊断详情面板，可对照 Chrome 版本、Origin、安全上下文、Prompt / Summarizer 原始状态与 `error/reason`，并一键复制 `chrome://on-device-internals` 进行核验。
 
 可能状态：
 
@@ -110,14 +112,15 @@ AI Assistant 会显示“本次实际执行”，例如 `Chrome 本地 AI` 或 `
 2. 切换 Local/Smart 不修改原 API Key 与模型。
 3. 再切回 Cloud 后原配置继续可用。
 
-## CI
+## CI 与自动化回归
 
-Pull Request 会执行：
+Pull Request 与 `main` 分支推送会执行：
 
 ```bash
 npm ci
 npm run lint
+npm test
 npm run build
 ```
 
-CI 用于阻止 TypeScript / ESLint / Next.js 构建回归；Chrome Built-in AI 的真实 availability、下载和本地推理仍需要真实 Chrome 设备做人工回归。
+`npm test` 使用 Node 24 内置测试运行器覆盖 Capability Detection v2（options 一致性、独立检测、安全上下文、错误捕获、进度归一化）、中英文路由边界、无自动下载约束、主动取消不回退云端以及诊断输出；真实 Chrome 设备的端到端模型下载仍可配合设置页「诊断详情」与 `chrome://on-device-internals` 对照复核。

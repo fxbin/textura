@@ -5,6 +5,18 @@ export type BuiltInAvailability = 'unavailable' | 'downloadable' | 'downloading'
 export type LocalAiTask = 'format' | 'polish' | 'summarize' | 'expand' | 'fix';
 export type LocalAiExecutionMode = 'smart' | 'chrome-built-in' | 'cloud';
 
+export type ChromeBuiltInCapabilityReason =
+  | 'insecure-context'
+  | 'api-missing'
+  | 'language-unsupported'
+  | 'browser-unavailable'
+  | 'availability-check-failed';
+
+export interface LanguageModelCoreOptions {
+  expectedInputs: Array<{ type: 'text'; languages: string[] }>;
+  expectedOutputs: Array<{ type: 'text'; languages: string[] }>;
+}
+
 export interface ChromeBuiltInCapabilityRequest {
   inputLanguage: string;
   outputLanguage?: string;
@@ -15,17 +27,17 @@ export interface ChromeBuiltInCapability {
   provider: 'chrome-built-in';
   apiPresent: boolean;
   availability: BuiltInAvailability;
+  rawAvailability?: string;
   inputLanguage: string;
   outputLanguage: string;
   systemPromptLanguage: string;
   supportedLanguages: readonly ChromeBuiltInTextLanguage[];
   requiresDownload: boolean;
   canCreateSession: boolean;
-  reason?:
-    | 'api-missing'
-    | 'language-unsupported'
-    | 'browser-unavailable'
-    | 'availability-check-failed';
+  reason?: ChromeBuiltInCapabilityReason;
+  reasonMessage?: string;
+  errorMessage?: string;
+  checkedOptions?: LanguageModelCoreOptions;
   error?: unknown;
 }
 
